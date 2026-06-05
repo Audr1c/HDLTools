@@ -65,8 +65,14 @@ module alu_tb;
     endtask
 
     initial begin
+        // Wait for master start trigger
+        @(master_tb.master_is_done);
+
         formatted_msg_alu = $sformatf("-- alu Test Bench --");
         $display("%s%s%s", `CLR_BLUE, formatted_msg_alu, `CLR_RESET);
+        // Warning by default
+        $display("%s[ WARNING ] Test cases not implemented!%s", `CLR_RED, `CLR_RESET);
+
         // ==========================================
         // 1. Initial Test Cases
         // ==========================================
@@ -80,7 +86,7 @@ module alu_tb;
         if (errors == 0) $display("%s%s%s", `CLR_GREEN, formatted_msg_alu, `CLR_RESET);
         else             $display("%s%s%s", `CLR_RED, formatted_msg_alu, `CLR_RESET);
 
-        // Signal alu_is_done for next testbench
+        // Trigger completion event in master
         -> master_tb.alu_is_done;
 
     end

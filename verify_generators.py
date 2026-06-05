@@ -12,12 +12,11 @@ def test_integration():
     
     print(f"Parsed Module: {alu_name}")
     
-    # Generate ALU Testbench (Chained, triggers master_tb.alu_is_done, no finish)
+    # Generate ALU Testbench (Chained / With Master mode)
     alu_tb_code = generate_testbench_code(
         alu_name, alu_ports,
         is_sync_reset=False, is_active_low_reset=True,
-        tb_mode="chained", wait_event="", trigger_event="master_tb.alu_is_done",
-        call_finish=False
+        tb_mode="chained"
     )
     
     with open("tb_alu.sv", "w") as f:
@@ -31,12 +30,11 @@ def test_integration():
     
     print(f"Parsed Module: {rf_name}")
     
-    # Generate RegFile Testbench (Chained, waits for master_tb.alu_is_done, triggers nothing, calls finish)
+    # Generate RegFile Testbench (Chained / With Master mode)
     rf_tb_code = generate_testbench_code(
         rf_name, rf_ports,
-        is_sync_reset=True, is_active_low_reset=False, # active high reset
-        tb_mode="chained", wait_event="master_tb.alu_is_done", trigger_event="",
-        call_finish=True
+        is_sync_reset=True, is_active_low_reset=False,
+        tb_mode="chained"
     )
     
     with open("tb_RegFile.sv", "w") as f:
@@ -45,8 +43,8 @@ def test_integration():
     
     # 3. Generate Master Testbench
     sub_tbs = [
-        {"module_name": "alu", "wait_event": "", "trigger_event": "master_tb.alu_is_done"},
-        {"module_name": "RegFile", "wait_event": "master_tb.alu_is_done", "trigger_event": ""}
+        {"module_name": "alu"},
+        {"module_name": "RegFile"}
     ]
     master_tb_code = generate_master_tb_code(sub_tbs)
     
@@ -54,24 +52,33 @@ def test_integration():
         f.write(master_tb_code)
     print("Generated master_tb.sv successfully!")
     
-    # Quick sanity checks on contents
+    # B. Sanity checks on contents
     print("\n--- Verifying content of generated tb_alu.sv ---")
     assert "`define CLR_RED" in alu_tb_code, "Missing color macros"
     assert "task verification_alu(" in alu_tb_code, "Missing verification task"
+    assert "Warning by default" in alu_tb_code, "Missing warning block comment"
+    assert "[ WARNING ] Test cases not implemented!" in alu_tb_code, "Missing warning display"
+    assert "@(master_tb.master_is_done);" in alu_tb_code, "Missing master start sync"
     assert "-> master_tb.alu_is_done;" in alu_tb_code, "Missing completion trigger event"
     assert "$finish;" not in alu_tb_code, "ALU TB should not call $finish"
     print("tb_alu.sv checks passed!")
     
     print("\n--- Verifying content of generated tb_RegFile.sv ---")
     assert "always" in rf_tb_code and "`PERIOD" in rf_tb_code, "Missing clock generation block"
-    assert "@(master_tb.alu_is_done);" in rf_tb_code, "Missing start event listener"
-    assert "$finish;" in rf_tb_code, "RegFile TB should call $finish"
+    assert "@(master_tb.master_is_done);" in rf_tb_code, "Missing master start sync"
+    assert "-> master_tb.RegFile_is_done;" in rf_tb_code, "Missing completion trigger event"
+    assert "$finish;" not in rf_tb_code, "RegFile TB should not call $finish in master mode"
     print("tb_RegFile.sv checks passed!")
     
     print("\n--- Verifying content of generated master_tb.sv ---")
-    assert "event alu_is_done;" in master_tb_code, "Missing synchronized event declaration"
+    assert "event master_is_done;" in master_tb_code, "Missing starting event declaration"
+    assert "event alu_is_done;" in master_tb_code, "Missing sub-tb event declaration"
+    assert "event RegFile_is_done;" in master_tb_code, "Missing sub-tb event declaration"
     assert "alu_tb u_alu_tb();" in master_tb_code, "Missing alu_tb instantiation"
     assert "RegFile_tb u_RegFile_tb();" in master_tb_code, "Missing RegFile_tb instantiation"
+    assert "@(alu_is_done);" in master_tb_code, "Missing sequential wait for alu"
+    assert "@(RegFile_is_done);" in master_tb_code, "Missing sequential wait for RegFile"
+    assert "$finish;" in master_tb_code, "Master TB must call $finish at the end"
     print("master_tb.sv checks passed!")
     
     print("\n[SUCCESS] Integration generation test completed successfully!")

@@ -1,5 +1,4 @@
 import os
-import re
 
 def format_width(width):
     w = width.strip()
@@ -31,9 +30,7 @@ def generate_module_code(module_name, ports):
     code.append("// ==========================================================================")
     code.append(f"module {module_name} (")
     
-    # Format ports
     port_lines = []
-    
     for i, port in enumerate(ports):
         name = port["name"] or f"port_{i}"
         direction = "input " if port["dir"] == "IN" else "output"
@@ -41,7 +38,6 @@ def generate_module_code(module_name, ports):
             direction = "inout "
             
         width_str = format_width(port["width"])
-        
         dir_pad = direction.ljust(7)
         type_str = "logic"
         w_pad = width_str.ljust(8) if width_str else "        "
@@ -60,10 +56,10 @@ def generate_module_code(module_name, ports):
     
     return "\n".join(code)
 
-def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_low_reset=True, 
-                            tb_mode="standalone", wait_event="", trigger_event="", call_finish=True):
+def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_low_reset=True, tb_mode="standalone"):
     """
-    Generates an advanced SystemVerilog testbench matching the user's template style.
+    Generates an advanced SystemVerilog testbench.
+    tb_mode can be "standalone" or "chained" (With Master).
     """
     if not module_name:
         module_name = "unnamed_module"
@@ -125,8 +121,6 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
     code.append("    // ----------------------------------------------------------------------")
     
     max_name_len = max([len(p["name"]) for p in ports]) if ports else 10
-    
-    # Clock name
     clk_name = clk_port["name"] if clk_port else None
     
     for port in ports:
@@ -135,7 +129,6 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
         w_pad = width_str + " " if width_str else ""
         
         if name == clk_name:
-            # Initialize clock to 0
             code.append(f"    logic {name} = 0;")
         else:
             code.append(f"    logic {w_pad}{name};")
@@ -163,7 +156,6 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
     code.append("")
     
     # 6. Verification Task
-    # Input ports for the task (exclude clock)
     task_inputs = [p for p in ports if p["dir"] == "IN" and p["name"] != clk_name]
     task_outputs = [p for p in ports if p["dir"] == "OUT" or p["dir"] == "INOUT"]
     
@@ -173,12 +165,10 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
     code.append(f"    task verification_{module_name}(")
     
     task_args = []
-    # Add input ports to task signature
     for p in task_inputs:
         w = format_task_width(p["width"])
         task_args.append(f"        input  logic {w}{p['name']}_test")
         
-    # Add expected outputs to task signature
     for p in task_outputs:
         w = format_task_width(p["width"])
         task_args.append(f"        input  logic {w}{p['name']}_expect")
@@ -192,7 +182,6 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
     for p in task_inputs:
         code.append(f"            {p['name']} = {p['name']}_test;")
     
-    # Clock cycle alignment or delay
     if clk_name:
         code.append("            #(`PERIOD);")
     else:
@@ -200,24 +189,21 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
         
     code.append("")
     
-    # Build the condition check
+    # Check condition
     checks = []
     for p in task_outputs:
         checks.append(f"{p['name']} !== {p['name']}_expect")
     check_cond = " || ".join(checks) if checks else "1'b0"
     
-    # Build error message formatting
+    # Format error/success logs
     err_format_args = ["tests_run"]
     err_format_str = f"  [ ERROR ] Test %02d: "
-    
-    # Add inputs to print
     in_prints = []
     for p in task_inputs:
         in_prints.append(f"{p['name']}:%h")
         err_format_args.append(f"{p['name']}_test")
     err_format_str += " ".join(in_prints)
     
-    # Add actual outputs and expected outputs to print
     out_prints = []
     for p in task_outputs:
         out_prints.append(f"Actual {p['name']}:%h (Expected:%h)")
@@ -225,10 +211,8 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
         err_format_args.append(f"{p['name']}_expect")
     err_format_str += " | " + ", ".join(out_prints)
     
-    # Success message formatting
     success_format_args = ["tests_run"]
     success_format_str = f"  [SUCCESS] Test %02d: "
-    
     success_in_prints = []
     for p in task_inputs:
         success_in_prints.append(f"{p['name']}:%h")
@@ -258,18 +242,16 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
     # 7. Initial block
     code.append("    initial begin")
     
-    # Master Wait trigger if in chained mode
-    if tb_mode == "chained" and wait_event:
-        # Strip master_tb prefix for comment alignment
-        clean_wait = wait_event.replace("master_tb.", "")
-        code.append(f"        // Wait for {clean_wait} event")
-        code.append(f"        @({wait_event});")
+    # Master Start wait trigger
+    if tb_mode == "chained":
+        code.append("        // Wait for master start trigger")
+        code.append("        @(master_tb.master_is_done);")
         code.append("")
         
     # Stand-alone waveform dumping
     if tb_mode == "standalone":
         code.append("        // Waveform dumping")
-        code.append(f"        $dumpfile(\"build/{module_name}_simulation.vcd\");")
+        code.append("        $dumpfile(\"build/simulation.vcd\");")
         code.append(f"        $dumpvars(0, {tb_name});")
         code.append("")
         
@@ -287,6 +269,11 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
         code.append(f"        {rst_name} = {deassert_val};")
         code.append("")
         
+    # Default Warning
+    code.append("        // Warning by default")
+    code.append("        $display(\"%s[ WARNING ] Test cases not implemented!%s\", `CLR_RED, `CLR_RESET);")
+    code.append("")
+    
     # Test case templates
     code.append("        // ==========================================")
     code.append("        // 1. Initial Test Cases")
@@ -300,7 +287,7 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
     for p in task_inputs:
         val = "0"
         if p["name"] == rst_port["name"] if rst_port else False:
-            val = "1" if is_active_low_reset else "0" # reset deasserted
+            val = "1" if is_active_low_reset else "0"
         elif p["width"] != "1":
             val = "8'h00"
         mock_args_test.append(val)
@@ -326,14 +313,13 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
     code.append(f"        else             $display(\"%s%s%s\", `CLR_RED, formatted_msg_{module_name}, `CLR_RESET);")
     code.append("")
     
-    # Event Trigger at end
-    if tb_mode == "chained" and trigger_event:
-        clean_trig = trigger_event.replace("master_tb.", "")
-        code.append(f"        // Signal {clean_trig} for next testbench")
-        code.append(f"        -> {trigger_event};")
+    # Event Trigger at end (if chained)
+    if tb_mode == "chained":
+        code.append(f"        // Trigger completion event in master")
+        code.append(f"        -> master_tb.{module_name}_is_done;")
         code.append("")
         
-    if call_finish:
+    if tb_mode == "standalone":
         code.append("        $finish;")
         
     code.append("    end")
@@ -344,48 +330,40 @@ def generate_testbench_code(module_name, ports, is_sync_reset=False, is_active_l
 
 def generate_master_tb_code(sub_tbs):
     """
-    Generates a top-level master_tb module that instantiates multiple testbenches
-    and triggers them in sequence.
-    sub_tbs is a list of dicts: {"module_name": str, "wait_event": str, "trigger_event": str}
+    Generates a top-level master_tb module matching the user's updated event format.
     """
     code = []
     code.append("`timescale 1ns / 1ps")
     code.append("")
     code.append("module master_tb;")
     code.append("")
+    code.append("    // Synchronization Events")
+    code.append("    event master_is_done;")
     
-    # Extract unique event names that are triggered in master_tb namespace
-    events = set()
     for tb in sub_tbs:
-        for ev in [tb.get("wait_event", ""), tb.get("trigger_event", "")]:
-            if ev.startswith("master_tb."):
-                ev_name = ev.replace("master_tb.", "")
-                events.add(ev_name)
-                
-    if events:
-        code.append("    // ----------------------------------------------------------------------")
-        code.append("    // Synchronization Events")
-        code.append("    // ----------------------------------------------------------------------")
-        for ev in sorted(list(events)):
-            code.append(f"    event {ev};")
-        code.append("")
-        
-    # Instantiations of sub-testbenches
-    code.append("    // ----------------------------------------------------------------------")
+        name = tb["module_name"]
+        code.append(f"    event {name}_is_done;")
+    code.append("")
+    
     code.append("    // Sub-Testbench Instantiations")
-    code.append("    // ----------------------------------------------------------------------")
     for tb in sub_tbs:
         name = tb["module_name"]
         code.append(f"    {name}_tb u_{name}_tb();")
     code.append("")
     
-    # Waveform dumping
-    code.append("    // ----------------------------------------------------------------------")
-    code.append("    // Global Waveform Logging")
-    code.append("    // ----------------------------------------------------------------------")
     code.append("    initial begin")
     code.append("        $dumpfile(\"build/simulation.vcd\");")
-    code.append("        $dumpvars(0, master_tb); // Dump all sub-modules recursively")
+    code.append("        $dumpvars(0, master_tb); // Record all signals recursively")
+    code.append("        ")
+    code.append("        // Start all testbenches")
+    code.append("        -> master_is_done;")
+    code.append("        ")
+    code.append("        // Wait for each testbench to complete sequentially")
+    for tb in sub_tbs:
+        name = tb["module_name"]
+        code.append(f"        @({name}_is_done);")
+    code.append("        ")
+    code.append("        $finish;")
     code.append("    end")
     code.append("")
     code.append("endmodule")
