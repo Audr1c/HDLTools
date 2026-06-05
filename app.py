@@ -16,11 +16,38 @@ import pygame
 import tkinter as tk
 from tkinter import filedialog
 
+# Asset Paths Setup
+DOSSIER_COURANT = os.path.dirname(os.path.abspath(__file__))
+DOSSIER_IMAGES = os.path.join(DOSSIER_COURANT, "assets", "images")
+
+# Ensure assets directory and default icon exist before loading
+os.makedirs(DOSSIER_IMAGES, exist_ok=True)
+chemin_icone = os.path.join(DOSSIER_IMAGES, "icone.png")
+if not os.path.exists(chemin_icone):
+    pygame.init()
+    surf = pygame.Surface((32, 32), pygame.SRCALPHA)
+    pygame.draw.rect(surf, (0, 229, 255), (6, 6, 20, 20), border_radius=4)
+    for i in range(4):
+        py = 9 + i * 5
+        pygame.draw.line(surf, (0, 229, 255), (2, py), (5, py), 1)
+        pygame.draw.line(surf, (0, 229, 255), (26, py), (29, py), 1)
+    pygame.image.save(surf, chemin_icone)
+
+# Ensure diskette.png exists
+chemin_disquette = os.path.join(DOSSIER_IMAGES, "diskette.png")
+if not os.path.exists(chemin_disquette):
+    pygame.init()
+    temp_d = pygame.Surface((32, 32), pygame.SRCALPHA)
+    pygame.draw.rect(temp_d, (201, 209, 217), (4, 4, 24, 24), border_radius=2)
+    pygame.draw.rect(temp_d, (20, 24, 33), (8, 6, 16, 6))
+    pygame.draw.rect(temp_d, (20, 24, 33), (10, 18, 12, 10))
+    pygame.image.save(temp_d, chemin_disquette)
+
 # Import our custom components
 from ui_components import (
     theme, Button, ToggleButton, Checkbox, 
     ScrollArea, PortRow, BlockDiagram, ToastManager,
-    set_clipboard_text
+    TextArea, set_clipboard_text
 )
 from sv_parser import parse_sv_file, detect_clk_rst
 from sv_generator import generate_module_code, generate_testbench_code, generate_master_tb_code
@@ -54,35 +81,6 @@ def select_save_file(default_name, is_tb=False):
     root.destroy()
     return file_path
 
-def draw_highlighted_line(surface, font, line_text, x, y):
-    import re
-    words = re.split(r'(\s+|[;,().#`]|//.*)', line_text)
-    curr_x = x
-    
-    for word in words:
-        if not word:
-            continue
-            
-        color = theme.colors["editor.foreground"]
-        
-        # Color matching
-        if word.startswith("//"):
-            color = theme.colors["syntax.comment"]
-        elif word in ["module", "endmodule", "input", "output", "inout", "logic", "reg", "wire", "parameter", "localparam", "initial", "begin", "end", "always", "forever", "wait", "posedge", "negedge", "repeat", "timescale", "`timescale", "task", "endtask"]:
-            color = theme.colors["syntax.keyword"]
-        elif word.startswith("`"):
-            color = theme.colors["syntax.keyword"]
-        elif word.replace("_","").isalnum() and word[0].isalpha() and word not in ["logic","reg","wire"]:
-            color = theme.colors["syntax.name"]
-        elif word.isdigit() or word.startswith("'h") or word.startswith("'d") or word.startswith("'b") or (len(word) > 1 and word[1] == "'"):
-            color = theme.colors["syntax.number"]
-        elif word.startswith('"') and word.endswith('"'):
-            color = theme.colors["syntax.string"]
-            
-        w_surf = font.render(word, True, color)
-        surface.blit(w_surf, (curr_x, y))
-        curr_x += w_surf.get_width()
-
 def main():
     global WINDOW_WIDTH, WINDOW_HEIGHT
     
@@ -92,6 +90,18 @@ def main():
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
     clock = pygame.time.Clock()
     
+    # Apply application icon (preserve Windows taskbar grouping)
+    if sys.platform == "win32":
+        import ctypes
+        myappid = "Tools.hdl.1.0"
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
+    try:
+        icone = pygame.image.load(chemin_icone)
+        pygame.display.set_icon(icone)
+    except pygame.error:
+        print(f"Impossible de charger l'image à l'emplacement : {chemin_icone}")
+
     theme.init_fonts()
     
     # State variables
@@ -106,9 +116,10 @@ def main():
     is_sync_reset = False
     is_active_low_reset = True
     tb_mode = "standalone" # "standalone" or "chained" (With Master)
+    code_font_size = 14 # adjustable font size
     
     # Active Panels / Tabs
-    right_tab = "diagram" 
+    right_tab = "diagram" # "diagram", "code", "paste"
     code_subtab = "testbench" # "module", "testbench", "master"
     
     # Toast Manager
@@ -183,19 +194,19 @@ def main():
         ports_scroll.scroll_y = max(0, len(ports) * 36 - ports_scroll.rect.height)
         toast.show(f"Added output '{name}'")
 
-    # Scroll Areas
-    ports_scroll = ScrollArea((20, 260, 460, WINDOW_HEIGHT - 365))
-    code_scroll = ScrollArea((520, 110, WINDOW_WIDTH - 540, WINDOW_HEIGHT - 130))
+    # Scroll Areas & Multi-Line TextAreas
+    ports_scroll = ScrollArea((20, 260, 460, WINDOW_HEIGHT - 330))
+    
+    # Read-only copiable Code Preview Area
+    code_preview_area = TextArea((520, 110, WINDOW_WIDTH - 540, WINDOW_HEIGHT - 130), read_only=True, syntax_highlight=True)
+    
+    # Writable Paste SV Code Area
+    paste_area = TextArea((520, 110, WINDOW_WIDTH - 540, WINDOW_HEIGHT - 180), placeholder="Paste your SystemVerilog module code here...")
     
     # Visual Diagram Area
     diagram_visualizer = BlockDiagram((520, 65, WINDOW_WIDTH - 540, WINDOW_HEIGHT - 85))
     
-    # Generated Code lines cache
-    generated_code_lines = []
-    
     def get_master_tb_code():
-        # Build master simulation chain
-        # Uses classic alu/regfile if matches user naming, otherwise dynamically hooks current module
         if module_name.lower() in ["alu", "regfile", "reg_file"]:
             sub_tbs = [
                 {"module_name": "alu"},
@@ -209,7 +220,6 @@ def main():
         return generate_master_tb_code(sub_tbs)
 
     def update_code_cache():
-        nonlocal generated_code_lines
         if code_subtab == "module":
             code_str = generate_module_code(module_name, ports)
         elif code_subtab == "testbench":
@@ -219,14 +229,14 @@ def main():
         else: # "master"
             code_str = get_master_tb_code()
             
-        generated_code_lines = code_str.split("\n")
-        code_scroll.virtual_height = len(generated_code_lines) * 18
-        
+        code_preview_area.text = code_str
+
     update_code_cache()
     
     # Right panel Tab selectors
     btn_tab_diagram = Button((520, 20, 150, 30), "Block Diagram", callback=lambda: set_right_tab("diagram"))
     btn_tab_code = Button((680, 20, 150, 30), "Code Preview", callback=lambda: set_right_tab("code"))
+    btn_tab_paste = Button((840, 20, 150, 30), "Paste & Parse", callback=lambda: set_right_tab("paste"))
     
     def set_right_tab(tab):
         nonlocal right_tab
@@ -243,35 +253,41 @@ def main():
         code_subtab = sub
         update_code_cache()
         
-    # Action Buttons
-    def handle_save_module():
-        path = select_save_file(f"{module_name}.sv", is_tb=False)
-        if path:
-            try:
-                code_str = generate_module_code(module_name, ports)
-                with open(path, 'w') as f:
-                    f.write(code_str)
-                toast.show(f"Saved module to {os.path.basename(path)}")
-            except Exception as e:
-                toast.show(f"Error saving: {e}", is_error=True)
-                
-    def handle_save_testbench():
-        if code_subtab == "master":
-            default_fn = "master_tb.sv"
-            is_tb_save = True
+    # Save active code action
+    def handle_save_active():
+        if right_tab == "diagram":
+            default_fn = f"{module_name}.sv"
+            is_tb_save = False
+            code_type = "module"
+        elif right_tab == "paste":
+            default_fn = "pasted_module.sv"
+            is_tb_save = False
+            code_type = "paste"
         else:
-            default_fn = f"tb_{module_name}.sv" if code_subtab == "testbench" else f"{module_name}.sv"
-            is_tb_save = (code_subtab == "testbench")
-            
+            if code_subtab == "module":
+                default_fn = f"{module_name}.sv"
+                is_tb_save = False
+                code_type = "module"
+            elif code_subtab == "testbench":
+                default_fn = f"tb_{module_name}.sv"
+                is_tb_save = True
+                code_type = "testbench"
+            else:
+                default_fn = "master_tb.sv"
+                is_tb_save = True
+                code_type = "master"
+                
         path = select_save_file(default_fn, is_tb=is_tb_save)
         if path:
             try:
-                if code_subtab == "module":
+                if code_type == "module":
                     code_str = generate_module_code(module_name, ports)
-                elif code_subtab == "testbench":
+                elif code_type == "testbench":
                     code_str = generate_testbench_code(
                         module_name, ports, is_sync_reset, is_active_low_reset, tb_mode
                     )
+                elif code_type == "paste":
+                    code_str = paste_area.text
                 else:
                     code_str = get_master_tb_code()
                     
@@ -287,27 +303,41 @@ def main():
             try:
                 with open(path, 'r') as f:
                     content = f.read()
-                parsed_name, parsed_ports = parse_sv_file(content)
-                if parsed_name:
-                    nonlocal module_name, ports, is_active_low_reset
-                    module_name = parsed_name
-                    module_name_input.text = parsed_name
-                    module_name_input.cursor_pos = len(parsed_name)
-                    ports = parsed_ports
-                    
-                    clk_p, rst_p = detect_clk_rst(ports)
-                    if rst_p:
-                        is_active_low_reset = rst_p["name"].lower().endswith("n") or rst_p["name"].lower().endswith("b")
-                        active_low_cb.checked = is_active_low_reset
-                        
-                    rebuild_port_rows()
-                    update_code_cache()
-                    toast.show(f"Parsed module '{parsed_name}' ({len(ports)} ports)")
-                else:
-                    toast.show("No valid module declaration found", is_error=True)
+                perform_parse(content)
             except Exception as e:
                 toast.show(f"Error parsing file: {e}", is_error=True)
+
+    def handle_parse_pasted():
+        content = paste_area.text
+        if content.strip():
+            perform_parse(content)
+        else:
+            toast.show("Paste area is empty!", is_error=True)
+
+    def perform_parse(content):
+        try:
+            parsed_name, parsed_ports = parse_sv_file(content)
+            if parsed_name:
+                nonlocal module_name, ports, is_active_low_reset
+                module_name = parsed_name
+                module_name_input.text = parsed_name
+                module_name_input.cursor_pos = len(parsed_name)
+                ports = parsed_ports
                 
+                clk_p, rst_p = detect_clk_rst(ports)
+                if rst_p:
+                    is_active_low_reset = rst_p["name"].lower().endswith("n") or rst_p["name"].lower().endswith("b")
+                    active_low_cb.checked = is_active_low_reset
+                    
+                rebuild_port_rows()
+                update_code_cache()
+                toast.show(f"Parsed module '{parsed_name}' ({len(ports)} ports)")
+                set_right_tab("diagram")
+            else:
+                toast.show("No valid module declaration found", is_error=True)
+        except Exception as e:
+            toast.show(f"Error parsing code: {e}", is_error=True)
+
     def handle_copy_code():
         if code_subtab == "module":
             code_str = generate_module_code(module_name, ports)
@@ -320,14 +350,52 @@ def main():
         set_clipboard_text(code_str)
         toast.show("Code copied to clipboard!")
 
-    btn_gen_mod = Button((20, WINDOW_HEIGHT - 85, 220, 35), "Generate Module (.sv)", callback=handle_save_module, is_accent=True)
-    btn_gen_tb = Button((250, WINDOW_HEIGHT - 85, 230, 35), "Generate Testbench (.sv)", callback=handle_save_testbench, is_accent=True)
-    btn_parse = Button((20, WINDOW_HEIGHT - 45, 460, 35), "Parse SV Module File", callback=handle_parse_file, bg_color_key="list.activeSelectionBackground")
+    # Zoom functions
+    def zoom_code_in():
+        nonlocal code_font_size
+        code_font_size = min(32, code_font_size + 2)
+        theme.fonts["code"] = pygame.font.SysFont("consolas", code_font_size)
+        code_preview_area.line_h = code_font_size + 4
+        paste_area.line_h = code_font_size + 4
+        update_code_cache()
+        toast.show(f"Code Font Size: {code_font_size}px")
+        
+    def zoom_code_out():
+        nonlocal code_font_size
+        code_font_size = max(10, code_font_size - 2)
+        theme.fonts["code"] = pygame.font.SysFont("consolas", code_font_size)
+        code_preview_area.line_h = code_font_size + 4
+        paste_area.line_h = code_font_size + 4
+        update_code_cache()
+        toast.show(f"Code Font Size: {code_font_size}px")
+
+    def zoom_diag_in():
+        diagram_visualizer.scale = min(2.0, diagram_visualizer.scale + 0.1)
+        toast.show(f"Diagram Zoom: {int(diagram_visualizer.scale * 100)}%")
+        
+    def zoom_diag_out():
+        diagram_visualizer.scale = max(0.5, diagram_visualizer.scale - 0.1)
+        toast.show(f"Diagram Zoom: {int(diagram_visualizer.scale * 100)}%")
+
+    # Buttons layout setup
+    btn_save = Button((WINDOW_WIDTH - 60, 20, 40, 30), "", callback=handle_save_active, icon="save", no_bg=False)
+    btn_parse = Button((20, WINDOW_HEIGHT - 50, 460, 35), "Parse SV Module File", callback=handle_parse_file, bg_color_key="list.activeSelectionBackground")
     btn_copy = Button((WINDOW_WIDTH - 140, 65, 120, 26), "Copy Code", callback=handle_copy_code, bg_color_key="button.background")
+
+    # Zoom Buttons for Diagram & Code Preview
+    btn_diag_zoom_in = Button((WINDOW_WIDTH - 100, 80, 30, 30), "+", callback=zoom_diag_in)
+    btn_diag_zoom_out = Button((WINDOW_WIDTH - 60, 80, 30, 30), "-", callback=zoom_diag_out)
+    
+    btn_code_zoom_in = Button((WINDOW_WIDTH - 250, 65, 30, 26), "+", callback=zoom_code_in)
+    btn_code_zoom_out = Button((WINDOW_WIDTH - 210, 65, 30, 26), "-", callback=zoom_code_out)
+
+    # Parse pasted code button
+    btn_parse_pasted = Button((WINDOW_WIDTH - 220, WINDOW_HEIGHT - 60, 200, 30), "Parse Pasted Code", callback=handle_parse_pasted, is_accent=True)
 
     def update_tab_highlights():
         btn_tab_diagram.is_accent = (right_tab == "diagram")
         btn_tab_code.is_accent = (right_tab == "code")
+        btn_tab_paste.is_accent = (right_tab == "paste")
         btn_subtab_mod.is_accent = (code_subtab == "module")
         btn_subtab_tb.is_accent = (code_subtab == "testbench")
         btn_subtab_master.is_accent = (code_subtab == "master")
@@ -349,21 +417,42 @@ def main():
         curr_mode = "standalone" if tb_mode_toggle.getValue() == "Standalone" else "chained"
         if tb_mode != curr_mode:
             tb_mode = curr_mode
+            # Disable Master TB subtab in Standalone mode
+            if tb_mode == "standalone" and code_subtab == "master":
+                code_subtab = "testbench"
             update_code_cache()
             
         update_tab_highlights()
 
         # Update responsive UI layouts
-        ports_scroll.rect.height = WINDOW_HEIGHT - 365
-        code_scroll.rect.width = WINDOW_WIDTH - 540
-        code_scroll.rect.height = WINDOW_HEIGHT - 130
-        diagram_visualizer.rect.width = WINDOW_WIDTH - 540
+        ports_scroll.rect.height = WINDOW_HEIGHT - 330
+        
+        # Recalculate Right Panel Widgets
+        w_right = WINDOW_WIDTH - 540
+        code_scroll_h = WINDOW_HEIGHT - 130
+        
+        code_preview_area.rect.width = w_right
+        code_preview_area.rect.height = code_scroll_h
+        
+        paste_area.rect.width = w_right
+        paste_area.rect.height = WINDOW_HEIGHT - 180
+        
+        diagram_visualizer.rect.width = w_right
         diagram_visualizer.rect.height = WINDOW_HEIGHT - 85
         
-        btn_gen_mod.rect.y = WINDOW_HEIGHT - 85
-        btn_gen_tb.rect.y = WINDOW_HEIGHT - 85
-        btn_parse.rect.y = WINDOW_HEIGHT - 45
+        # Button placement offsets
+        btn_save.rect.x = WINDOW_WIDTH - 60
+        btn_parse.rect.y = WINDOW_HEIGHT - 50
+        
         btn_copy.rect.x = WINDOW_WIDTH - 140
+        btn_code_zoom_in.rect.x = WINDOW_WIDTH - 250
+        btn_code_zoom_out.rect.x = WINDOW_WIDTH - 210
+        
+        btn_diag_zoom_in.rect.x = WINDOW_WIDTH - 100
+        btn_diag_zoom_out.rect.x = WINDOW_WIDTH - 60
+        
+        btn_parse_pasted.rect.x = WINDOW_WIDTH - 220
+        btn_parse_pasted.rect.y = WINDOW_HEIGHT - 60
 
         # Event handling
         events = pygame.event.get()
@@ -417,26 +506,35 @@ def main():
             
             btn_add_clk.handle_event(event)
             btn_add_rst.handle_event(event)
-            
             tb_mode_toggle.handle_event(event)
             
             btn_add_input.handle_event(event)
             btn_add_output.handle_event(event)
-            
-            btn_gen_mod.handle_event(event)
-            btn_gen_tb.handle_event(event)
             btn_parse.handle_event(event)
             
             # Right panel tabs
             btn_tab_diagram.handle_event(event)
             btn_tab_code.handle_event(event)
+            btn_tab_paste.handle_event(event)
+            btn_save.handle_event(event)
             
-            if right_tab == "code":
+            if right_tab == "diagram":
+                btn_diag_zoom_in.handle_event(event)
+                btn_diag_zoom_out.handle_event(event)
+            
+            elif right_tab == "code":
                 btn_subtab_mod.handle_event(event)
                 btn_subtab_tb.handle_event(event)
-                btn_subtab_master.handle_event(event)
+                if tb_mode == "chained": # Only handle Master TB tab if With Master mode
+                    btn_subtab_master.handle_event(event)
                 btn_copy.handle_event(event)
-                code_scroll.handle_event(event)
+                btn_code_zoom_in.handle_event(event)
+                btn_code_zoom_out.handle_event(event)
+                code_preview_area.handle_event(event)
+                
+            elif right_tab == "paste":
+                paste_area.handle_event(event)
+                btn_parse_pasted.handle_event(event)
 
             # Ports scroll area handling
             ports_scroll.handle_event(event)
@@ -460,27 +558,38 @@ def main():
         
         btn_add_input.update()
         btn_add_output.update()
-        
-        btn_gen_mod.update()
-        btn_gen_tb.update()
         btn_parse.update()
+        btn_save.update()
         
         btn_tab_diagram.update()
         btn_tab_code.update()
+        btn_tab_paste.update()
         
-        if right_tab == "code":
+        if right_tab == "diagram":
+            btn_diag_zoom_in.update()
+            btn_diag_zoom_out.update()
+            
+        elif right_tab == "code":
             btn_subtab_mod.update()
             btn_subtab_tb.update()
-            btn_subtab_master.update()
+            if tb_mode == "chained":
+                btn_subtab_master.update()
             btn_copy.update()
+            btn_code_zoom_in.update()
+            btn_code_zoom_out.update()
+            code_preview_area.update()
+            
+        elif right_tab == "paste":
+            paste_area.update()
+            btn_parse_pasted.update()
             
         for r in port_rows:
             r.update()
             
         ports_scroll.virtual_height = len(ports) * 36
         
-        # Trigger cache update if editing
-        if pygame.key.get_focused() or any(r.name_input.focused or r.width_input.focused for r in port_rows):
+        # Always update code cache if right tab is "code" to avoid desync
+        if right_tab == "code":
             update_code_cache()
 
         # Rendering
@@ -491,42 +600,33 @@ def main():
         pygame.draw.rect(screen, theme.colors["sideBar.background"], sidebar_rect)
         pygame.draw.line(screen, theme.colors["sideBar.border"], (500, 0), (500, WINDOW_HEIGHT), 2)
         
-        # Panel Title
         lbl_title = theme.fonts["header"].render("SystemVerilog Designer", True, theme.colors["editor.foreground"])
         screen.blit(lbl_title, (20, 20))
         
-        # Module name input
         lbl_mod = theme.fonts["body"].render("Module Name:", True, theme.colors["editor.foreground"])
         screen.blit(lbl_mod, (20, 60))
         module_name_input.draw(screen)
         
-        # Checkboxes
         active_low_cb.draw(screen)
         sync_reset_cb.draw(screen)
         
-        # Presets
         btn_add_clk.draw(screen)
         btn_add_rst.draw(screen)
         
-        # Divider 1
         pygame.draw.line(screen, theme.colors["sideBar.border"], (20, 155), (480, 155), 1)
         
-        # Testbench Mode Labels & Fields
         lbl_tb_title = theme.fonts["body_bold"].render("Testbench Settings", True, theme.colors["editor.foreground"])
         screen.blit(lbl_tb_title, (20, 162))
         tb_mode_toggle.draw(screen)
         
-        # Divider 2
         pygame.draw.line(screen, theme.colors["sideBar.border"], (20, 220), (480, 220), 1)
         
-        # Ports title
         lbl_ports = theme.fonts["body_bold"].render("Module Ports", True, theme.colors["editor.foreground"])
         screen.blit(lbl_ports, (20, 228))
         
         btn_add_input.draw(screen)
         btn_add_output.draw(screen)
         
-        # Ports list drawing
         def draw_ports_list(surface, scroll_y):
             for idx, r in enumerate(port_rows):
                 ry = 260 + idx * 36
@@ -547,45 +647,39 @@ def main():
                 
         ports_scroll.draw(screen, draw_ports_list)
         
-        # Bottom Actions
-        pygame.draw.line(screen, theme.colors["sideBar.border"], (20, WINDOW_HEIGHT - 95), (480, WINDOW_HEIGHT - 95), 1)
-        btn_gen_mod.draw(screen)
-        btn_gen_tb.draw(screen)
+        pygame.draw.line(screen, theme.colors["sideBar.border"], (20, WINDOW_HEIGHT - 60), (480, WINDOW_HEIGHT - 60), 1)
         btn_parse.draw(screen)
         
         # 2. DRAW RIGHT PANEL (Viewer)
         btn_tab_diagram.draw(screen)
         btn_tab_code.draw(screen)
+        btn_tab_paste.draw(screen)
+        btn_save.draw(screen)
         
         if right_tab == "diagram":
             diagram_visualizer.draw(screen, module_name, ports)
-        else:
-            # Code preview panel background
-            code_bg_rect = pygame.Rect(520, 65, WINDOW_WIDTH - 540, WINDOW_HEIGHT - 85)
+            btn_diag_zoom_in.draw(screen)
+            btn_diag_zoom_out.draw(screen)
+            
+        elif right_tab == "code":
+            code_bg_rect = pygame.Rect(520, 65, w_right, WINDOW_HEIGHT - 85)
             pygame.draw.rect(screen, theme.colors["sideBar.background"], code_bg_rect, border_radius=12)
             pygame.draw.rect(screen, theme.colors["sideBar.border"], code_bg_rect, width=2, border_radius=12)
             
-            # Sub-tabs
             btn_subtab_mod.draw(screen)
             btn_subtab_tb.draw(screen)
-            btn_subtab_master.draw(screen)
+            if tb_mode == "chained":
+                btn_subtab_master.draw(screen)
             btn_copy.draw(screen)
+            btn_code_zoom_in.draw(screen)
+            btn_code_zoom_out.draw(screen)
             
-            # Draw separator
             pygame.draw.line(screen, theme.colors["sideBar.border"], (520, 100), (WINDOW_WIDTH - 20, 100), 1)
+            code_preview_area.draw(screen)
             
-            # Render scrollable code
-            def draw_code_viewport(surface, scroll_y):
-                font = theme.fonts["code"]
-                line_h = 18
-                for idx, line in enumerate(generated_code_lines):
-                    vy = idx * line_h
-                    sy = 110 + vy - scroll_y
-                    
-                    if 110 - line_h < sy < WINDOW_HEIGHT - 30:
-                        draw_highlighted_line(surface, font, line, 535, sy)
-                        
-            code_scroll.draw(screen, draw_code_viewport)
+        elif right_tab == "paste":
+            paste_area.draw(screen)
+            btn_parse_pasted.draw(screen)
 
         # Draw Toast notifications
         toast.draw(screen, WINDOW_WIDTH, WINDOW_HEIGHT)

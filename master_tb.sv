@@ -13,7 +13,7 @@ module master_tb;
 
     initial begin
         $dumpfile("build/simulation.vcd");
-        $dumpvars(0, master_tb); // Record all signals recursively
+        $dumpvars(0, master_tb);
         
         // Start all testbenches
         -> master_is_done;
