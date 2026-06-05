@@ -4,6 +4,181 @@ import os
 import time
 import tkinter as tk
 
+# Translations system
+current_language = "en"
+
+TRANSLATIONS = {
+    "en": {
+        "title": "SystemVerilog Designer",
+        "module_name": "Module Name:",
+        "active_low": "Active Low Reset",
+        "sync_reset": "Synchronous Reset",
+        "add_clk": "Add Clock",
+        "add_rst": "Add Reset",
+        "tb_settings": "Testbench Settings",
+        "module_ports": "Module Ports",
+        "Standalone": "Standalone",
+        "With Master": "With Master",
+        "Block Diagram": "Block Diagram",
+        "Code Preview": "Code Preview",
+        "Paste or Import": "Paste or Import",
+        "Module Code": "Module Code",
+        "Testbench Code": "Testbench Code",
+        "Master TB Code": "Master TB Code",
+        "Import SV File": "Import SV File",
+        "Parse Pasted Code": "Parse Pasted Code",
+        "Copy Code": "Copy Code",
+        "Preferences": "Preferences",
+        "pref_title": "Preferences",
+        "pref_ui_scale": "UI Font Size:",
+        "pref_lang": "Language:",
+        "pref_editor_size": "Editor Font Size:",
+        "pref_theme": "Theme:",
+        "Close": "Close",
+        "Active Low Reset": "Active Low Reset",
+        "Synchronous Reset": "Synchronous Reset",
+        "Add Clock": "Add Clock",
+        "Add Reset": "Add Reset",
+        "+ Input": "+ Input",
+        "+ Output": "+ Output",
+        "close": "Close",
+    },
+    "fr": {
+        "title": "Concepteur SystemVerilog",
+        "module_name": "Nom du Module :",
+        "active_low": "Reset Actif Bas",
+        "sync_reset": "Reset Synchrone",
+        "add_clk": "Ajouter Horloge",
+        "add_rst": "Ajouter Reset",
+        "tb_settings": "Paramètres Testbench",
+        "module_ports": "Ports du Module",
+        "Standalone": "Autonome",
+        "With Master": "Avec Master",
+        "Block Diagram": "Schéma Bloc",
+        "Code Preview": "Aperçu du Code",
+        "Paste or Import": "Coller ou Importer",
+        "Module Code": "Code Module",
+        "Testbench Code": "Code Testbench",
+        "Master TB Code": "Code Master TB",
+        "Import SV File": "Importer Fichier SV",
+        "Parse Pasted Code": "Analyser Code Collé",
+        "Copy Code": "Copier Code",
+        "Preferences": "Préférences",
+        "pref_title": "Préférences",
+        "pref_ui_scale": "Taille Police UI :",
+        "pref_lang": "Langue :",
+        "pref_editor_size": "Taille Code :",
+        "pref_theme": "Thème :",
+        "Close": "Fermer",
+        "Active Low Reset": "Reset Actif Bas",
+        "Synchronous Reset": "Reset Synchrone",
+        "Add Clock": "Ajouter Horloge",
+        "Add Reset": "Ajouter Reset",
+        "+ Input": "+ Entrée",
+        "+ Output": "+ Sortie",
+        "close": "Fermer",
+    }
+}
+
+def tr(key):
+    if key in TRANSLATIONS[current_language]:
+        return TRANSLATIONS[current_language][key]
+    return key
+
+# Theme Presets
+THEME_PRESETS = {
+    "Dark (Default)": {
+        "editor.background": (14, 17, 23),
+        "editor.foreground": (201, 209, 217),
+        "sideBar.background": (22, 27, 34),
+        "sideBar.border": (48, 54, 61),
+        "button.background": (33, 38, 45),
+        "button.foreground": (201, 209, 217),
+        "button.hoverBackground": (48, 54, 61),
+        "button.accentBackground": (35, 134, 54),
+        "button.accentForeground": (255, 255, 255),
+        "input.background": (13, 17, 23),
+        "input.foreground": (201, 209, 217),
+        "input.border": (48, 54, 61),
+        "input.focusBorder": (88, 166, 255),
+        "list.hoverBackground": (33, 38, 45),
+        "list.activeSelectionBackground": (31, 111, 235),
+        "list.activeSelectionForeground": (255, 255, 255),
+        "syntax.keyword": (255, 123, 114),
+        "syntax.type": (255, 123, 114),
+        "syntax.name": (121, 192, 255),
+        "syntax.number": (210, 168, 255),
+        "syntax.comment": (139, 148, 158),
+        "syntax.string": (165, 214, 255),
+        "ports.clock": (0, 229, 255),
+        "ports.reset": (255, 0, 127),
+        "ports.reset_light": (255, 128, 191),
+        "ports.input": (59, 130, 246),
+        "ports.output": (16, 185, 129),
+        "ports.inout": (245, 158, 11)
+    },
+    "Light": {
+        "editor.background": (250, 250, 250),
+        "editor.foreground": (36, 41, 47),
+        "sideBar.background": (246, 248, 250),
+        "sideBar.border": (208, 215, 222),
+        "button.background": (243, 244, 246),
+        "button.foreground": (36, 41, 47),
+        "button.hoverBackground": (229, 231, 235),
+        "button.accentBackground": (46, 164, 79),
+        "button.accentForeground": (255, 255, 255),
+        "input.background": (255, 255, 255),
+        "input.foreground": (36, 41, 47),
+        "input.border": (208, 215, 222),
+        "input.focusBorder": (9, 105, 218),
+        "list.hoverBackground": (234, 238, 242),
+        "list.activeSelectionBackground": (9, 105, 218),
+        "list.activeSelectionForeground": (255, 255, 255),
+        "syntax.keyword": (207, 34, 46),
+        "syntax.type": (207, 34, 46),
+        "syntax.name": (5, 66, 138),
+        "syntax.number": (5, 66, 138),
+        "syntax.comment": (106, 115, 125),
+        "syntax.string": (10, 48, 105),
+        "ports.clock": (0, 150, 180),
+        "ports.reset": (200, 0, 100),
+        "ports.reset_light": (230, 100, 150),
+        "ports.input": (9, 105, 218),
+        "ports.output": (46, 164, 79),
+        "ports.inout": (180, 100, 0)
+    },
+    "Solarized": {
+        "editor.background": (7, 54, 66),
+        "editor.foreground": (147, 161, 161),
+        "sideBar.background": (0, 43, 54),
+        "sideBar.border": (88, 110, 117),
+        "button.background": (7, 54, 66),
+        "button.foreground": (147, 161, 161),
+        "button.hoverBackground": (88, 110, 117),
+        "button.accentBackground": (133, 153, 0),
+        "button.accentForeground": (253, 246, 227),
+        "input.background": (0, 43, 54),
+        "input.foreground": (131, 148, 150),
+        "input.border": (88, 110, 117),
+        "input.focusBorder": (38, 139, 210),
+        "list.hoverBackground": (7, 54, 66),
+        "list.activeSelectionBackground": (38, 139, 210),
+        "list.activeSelectionForeground": (253, 246, 227),
+        "syntax.keyword": (203, 75, 22),
+        "syntax.type": (181, 137, 0),
+        "syntax.name": (38, 139, 210),
+        "syntax.number": (42, 161, 152),
+        "syntax.comment": (101, 123, 131),
+        "syntax.string": (42, 161, 152),
+        "ports.clock": (42, 161, 152),
+        "ports.reset": (220, 50, 47),
+        "ports.reset_light": (211, 54, 130),
+        "ports.input": (38, 139, 210),
+        "ports.output": (133, 153, 0),
+        "ports.inout": (181, 137, 0)
+    }
+}
+
 # Tkinter clipboard access
 def get_clipboard_text():
     try:
@@ -106,7 +281,12 @@ class Theme:
             except Exception as e:
                 print(f"Warning: Failed to load theme file: {e}. Using defaults.")
 
-    def init_fonts(self):
+    def apply_preset(self, preset_name):
+        if preset_name in THEME_PRESETS:
+            for k, v in THEME_PRESETS[preset_name].items():
+                self.colors[k] = v
+
+    def init_fonts(self, ui_scale=1.0):
         pygame.font.init()
         sys_sans = ["segoeui", "arial", "helvetica"]
         sys_mono = ["consolas", "sfmono", "couriernew", "courier"]
@@ -123,12 +303,18 @@ class Theme:
                 mono_name = f
                 break
 
-        self.fonts["header"] = pygame.font.SysFont(sans_name, 20, bold=True)
-        self.fonts["body"] = pygame.font.SysFont(sans_name, 14)
-        self.fonts["body_bold"] = pygame.font.SysFont(sans_name, 14, bold=True)
-        self.fonts["small"] = pygame.font.SysFont(sans_name, 11)
-        self.fonts["code"] = pygame.font.SysFont(mono_name, 14)
-        self.fonts["code_large"] = pygame.font.SysFont(mono_name, 16)
+        self.sans_name = sans_name
+        self.mono_name = mono_name
+
+        self.fonts["header"] = pygame.font.SysFont(sans_name, int(20 * ui_scale), bold=True)
+        self.fonts["body"] = pygame.font.SysFont(sans_name, int(14 * ui_scale))
+        self.fonts["body_bold"] = pygame.font.SysFont(sans_name, int(14 * ui_scale), bold=True)
+        self.fonts["small"] = pygame.font.SysFont(sans_name, int(11 * ui_scale))
+        
+        if "code" not in self.fonts:
+            self.fonts["code"] = pygame.font.SysFont(mono_name, 14)
+        if "code_large" not in self.fonts:
+            self.fonts["code_large"] = pygame.font.SysFont(mono_name, 16)
 
 # Globals for access
 theme = Theme("theme.json")
@@ -227,21 +413,29 @@ class Button(Widget):
                 pygame.draw.line(surface, fg_curr, (cx + size, cy - size), (cx - size, cy + size), 2)
             else:
                 font = theme.fonts["body"]
-                txt_surf = font.render(self.text, True, fg_curr)
+                txt_surf = font.render(tr(self.text), True, fg_curr)
                 txt_rect = txt_surf.get_rect(center=self.rect.center)
                 surface.blit(txt_surf, txt_rect)
         else:
             # Standard background button
-            if self.bg_color_key:
+            if self.icon == "save":
+                # Lighter background based on theme border so it stands out
+                bg_base = theme.colors["sideBar.border"]
+                bg_hover = tuple(min(255, int(c * 1.25)) if c > 50 else min(255, int(c * 1.6)) for c in bg_base)
+                fg_color = theme.colors["button.accentForeground"]
+            elif self.bg_color_key:
                 bg_base = theme.colors[self.bg_color_key]
             elif self.is_accent:
                 bg_base = theme.colors["button.accentBackground"]
             else:
                 bg_base = theme.colors["button.background"]
 
-            fg_color = theme.colors["button.accentForeground"] if (self.is_accent or self.bg_color_key) else theme.colors["button.foreground"]
+            if self.icon != "save":
+                fg_color = theme.colors["button.accentForeground"] if (self.is_accent or self.bg_color_key) else theme.colors["button.foreground"]
             
-            if self.is_accent:
+            if self.icon == "save":
+                pass
+            elif self.is_accent:
                 bg_hover = tuple(min(255, int(c * 1.2)) for c in bg_base)
             elif self.bg_color_key:
                 bg_hover = tuple(min(255, int(c * 1.2)) for c in bg_base)
@@ -280,14 +474,15 @@ class Button(Widget):
                 
                 img = image_cache[path]
                 if img:
-                    # Render loaded scaled icon image
-                    sz = min(self.rect.width - 12, self.rect.height - 12)
-                    scaled = pygame.transform.smoothscale(img, (sz, sz))
+                    # Render loaded scaled icon image (Almost full frame, e.g. padding of 4px)
+                    sz_w = self.rect.width - 8
+                    sz_h = self.rect.height - 8
+                    scaled = pygame.transform.smoothscale(img, (sz_w, sz_h))
                     r_img = scaled.get_rect(center=self.rect.center)
                     surface.blit(scaled, r_img)
                 else:
                     # Simple fallback floppy disk shape
-                    r = self.rect.inflate(-16, -12)
+                    r = self.rect.inflate(-8, -6)
                     pygame.draw.rect(surface, fg_color, r, width=2, border_radius=2)
                     lbl_r = pygame.Rect(r.x + 4, r.y + 2, r.width - 8, 4)
                     pygame.draw.rect(surface, fg_color, lbl_r, width=1)
@@ -295,7 +490,7 @@ class Button(Widget):
                     pygame.draw.rect(surface, fg_color, sld_r)
             else:
                 font = theme.fonts["body_bold"] if self.is_accent else theme.fonts["body"]
-                txt_surf = font.render(self.text, True, fg_color)
+                txt_surf = font.render(tr(self.text), True, fg_color)
                 txt_rect = txt_surf.get_rect(center=self.rect.center)
                 surface.blit(txt_surf, txt_rect)
 
@@ -346,7 +541,7 @@ class ToggleButton(Widget):
             fg_color = theme.colors["button.foreground"]
 
         font = theme.fonts["body_bold"]
-        txt_surf = font.render(val_str, True, fg_color)
+        txt_surf = font.render(tr(val_str), True, fg_color)
         txt_rect = txt_surf.get_rect(center=self.rect.center)
         surface.blit(txt_surf, txt_rect)
 
@@ -569,6 +764,9 @@ class InputBox(Widget):
         pygame.draw.rect(surface, bg_color, self.rect, border_radius=6)
         pygame.draw.rect(surface, border_color, self.rect, width=1, border_radius=6)
 
+        prev_clip = surface.get_clip()
+        surface.set_clip(self.rect.inflate(-4, -4))
+
         font = theme.fonts["code"]
         text_color = theme.colors["input.foreground"]
         
@@ -595,6 +793,8 @@ class InputBox(Widget):
                 cy1 = self.rect.y + 6
                 cy2 = self.rect.y + self.rect.height - 6
                 pygame.draw.line(surface, text_color, (cx, cy1), (cx, cy2), 1)
+
+        surface.set_clip(prev_clip)
 
 class TextArea(Widget):
     """
@@ -1003,7 +1203,7 @@ class Checkbox(Widget):
             pygame.draw.rect(surface, theme.colors["button.accentBackground"], inner_rect, border_radius=2)
 
         font = theme.fonts["body"]
-        lbl_surf = font.render(self.label, True, theme.colors["editor.foreground"])
+        lbl_surf = font.render(tr(self.label), True, theme.colors["editor.foreground"])
         surface.blit(lbl_surf, (box_rect.right + 8, self.rect.y + (self.rect.height - lbl_surf.get_height())//2))
 
 class ScrollArea:
@@ -1120,11 +1320,27 @@ class PortRow:
         self.width_input.update()
         self.del_btn.update()
 
-    def set_positions(self, x, y):
+    def set_positions(self, x, y, width=366):
+        # Scale positions based on available width
+        active_w = width - 16
+        del_w = 20
+        width_w = 70
+        dir_w = 50
+        
+        del_x = x + active_w - del_w
+        width_x = del_x - 10 - width_w
+        
         self.dir_toggle.rect.topleft = (x, y)
+        self.dir_toggle.rect.width = dir_w
+        
+        name_w = max(50, width_x - (x + 60) - 10)
         self.name_input.rect.topleft = (x + 60, y)
-        self.width_input.rect.topleft = (x + 250, y)
-        self.del_btn.rect.topleft = (x + 346, y)
+        self.name_input.rect.width = name_w
+        
+        self.width_input.rect.topleft = (width_x, y)
+        self.width_input.rect.width = width_w
+        
+        self.del_btn.rect.topleft = (del_x, y)
 
     def handle_event(self, event, offset_mouse_pos=None):
         if self.dir_toggle.handle_event(event, offset_mouse_pos): return True

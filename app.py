@@ -53,8 +53,9 @@ if not os.path.exists(chemin_disquette):
 from ui_components import (
     theme, Button, ToggleButton, Checkbox, 
     ScrollArea, PortRow, BlockDiagram, ToastManager,
-    TextArea, set_clipboard_text
+    TextArea, set_clipboard_text, tr
 )
+import ui_components
 from sv_parser import parse_sv_file, detect_clk_rst
 from sv_generator import generate_module_code, generate_testbench_code, generate_master_tb_code
 
@@ -124,6 +125,15 @@ def main():
     right_tab = "diagram" # "diagram", "code", "paste"
     code_subtab = "testbench" # "module", "testbench", "master"
     
+    # Draggable Divider State
+    sidebar_width = 500
+    is_dragging_separator = False
+    
+    # Preferences Modal State
+    show_preferences_modal = False
+    ui_font_scale = 1.0
+    current_theme_name = "Dark (Default)"
+    
     # Toast Manager
     toast = ToastManager()
     
@@ -146,6 +156,72 @@ def main():
     
     # PortRows
     port_rows = []
+
+    pref_card_w = 450
+    pref_card_h = 350
+    
+    # Language toggle
+    pref_lang_toggle = ToggleButton((0, 0, 180, 26), ["English", "Français"], initial_index=0)
+    
+    # Theme toggle
+    pref_theme_toggle = ToggleButton((0, 0, 180, 26), ["Dark (Default)", "Light", "Solarized"], initial_index=0)
+    
+    # UI scale change functions
+    def ui_dec():
+        nonlocal ui_font_scale
+        ui_font_scale = max(0.7, ui_font_scale - 0.1)
+        theme.init_fonts(ui_scale=ui_font_scale)
+        theme.fonts["code"] = pygame.font.SysFont(theme.mono_name, code_font_size)
+        theme.fonts["code_large"] = pygame.font.SysFont(theme.mono_name, code_font_size + 2)
+        toast.show(f"UI Font Scale: {int(ui_font_scale * 100)}%")
+        
+    def ui_inc():
+        nonlocal ui_font_scale
+        ui_font_scale = min(2.0, ui_font_scale + 0.1)
+        theme.init_fonts(ui_scale=ui_font_scale)
+        theme.fonts["code"] = pygame.font.SysFont(theme.mono_name, code_font_size)
+        theme.fonts["code_large"] = pygame.font.SysFont(theme.mono_name, code_font_size + 2)
+        toast.show(f"UI Font Scale: {int(ui_font_scale * 100)}%")
+        
+    btn_pref_ui_dec = Button((0, 0, 30, 26), "-", callback=ui_dec)
+    btn_pref_ui_inc = Button((0, 0, 30, 26), "+", callback=ui_inc)
+    
+    # Editor scale change functions
+    def ed_dec():
+        nonlocal code_font_size
+        code_font_size = max(10, code_font_size - 2)
+        theme.fonts["code"] = pygame.font.SysFont(theme.mono_name, code_font_size)
+        theme.fonts["code_large"] = pygame.font.SysFont(theme.mono_name, code_font_size + 2)
+        code_preview_area.line_h = code_font_size + 4
+        paste_area.line_h = code_font_size + 4
+        update_code_cache()
+        toast.show(f"Editor Font Size: {code_font_size}px")
+        
+    def ed_inc():
+        nonlocal code_font_size
+        code_font_size = min(32, code_font_size + 2)
+        theme.fonts["code"] = pygame.font.SysFont(theme.mono_name, code_font_size)
+        theme.fonts["code_large"] = pygame.font.SysFont(theme.mono_name, code_font_size + 2)
+        code_preview_area.line_h = code_font_size + 4
+        paste_area.line_h = code_font_size + 4
+        update_code_cache()
+        toast.show(f"Editor Font Size: {code_font_size}px")
+        
+    btn_pref_ed_dec = Button((0, 0, 30, 26), "-", callback=ed_dec)
+    btn_pref_ed_inc = Button((0, 0, 30, 26), "+", callback=ed_inc)
+    
+    def close_pref():
+        nonlocal show_preferences_modal
+        show_preferences_modal = False
+        
+    btn_pref_close = Button((0, 0, 150, 30), "Close", callback=close_pref, is_accent=True)
+    
+    def open_pref():
+        nonlocal show_preferences_modal
+        show_preferences_modal = True
+        pref_lang_toggle.index = 0 if ui_components.current_language == "en" else 1
+        
+    btn_prefs = Button((0, 0, 100, 26), "Preferences", callback=open_pref)
     
     def delete_port(idx):
         if 0 <= idx < len(ports):
@@ -197,16 +273,16 @@ def main():
         toast.show(f"Added output '{name}'")
 
     # Scroll Areas & Multi-Line TextAreas
-    ports_scroll = ScrollArea((20, 260, 460, WINDOW_HEIGHT - 330))
+    ports_scroll = ScrollArea((20, 260, sidebar_width - 40, WINDOW_HEIGHT - 280))
     
     # Read-only copiable Code Preview Area
-    code_preview_area = TextArea((520, 110, WINDOW_WIDTH - 540, WINDOW_HEIGHT - 130), read_only=True, syntax_highlight=True)
+    code_preview_area = TextArea((sidebar_width + 20, 110, WINDOW_WIDTH - (sidebar_width + 40), WINDOW_HEIGHT - 130), read_only=True, syntax_highlight=True)
     
     # Writable Paste SV Code Area
-    paste_area = TextArea((520, 110, WINDOW_WIDTH - 540, WINDOW_HEIGHT - 180), placeholder="Paste your SystemVerilog module code here...")
+    paste_area = TextArea((sidebar_width + 20, 110, WINDOW_WIDTH - (sidebar_width + 40), WINDOW_HEIGHT - 180), placeholder="Paste your SystemVerilog module code here...")
     
     # Visual Diagram Area
-    diagram_visualizer = BlockDiagram((520, 65, WINDOW_WIDTH - 540, WINDOW_HEIGHT - 85))
+    diagram_visualizer = BlockDiagram((sidebar_width + 20, 65, WINDOW_WIDTH - (sidebar_width + 40), WINDOW_HEIGHT - 85))
     
     def get_master_tb_code():
         if module_name.lower() in ["alu", "regfile", "reg_file"]:
@@ -236,9 +312,9 @@ def main():
     update_code_cache()
     
     # Right panel Tab selectors
-    btn_tab_diagram = Button((520, 20, 150, 30), "Block Diagram", callback=lambda: set_right_tab("diagram"))
-    btn_tab_code = Button((680, 20, 150, 30), "Code Preview", callback=lambda: set_right_tab("code"))
-    btn_tab_paste = Button((840, 20, 150, 30), "Paste & Parse", callback=lambda: set_right_tab("paste"))
+    btn_tab_diagram = Button((sidebar_width + 20, 20, 150, 30), "Block Diagram", callback=lambda: set_right_tab("diagram"))
+    btn_tab_code = Button((sidebar_width + 180, 20, 150, 30), "Code Preview", callback=lambda: set_right_tab("code"))
+    btn_tab_paste = Button((sidebar_width + 340, 20, 150, 30), "Paste or Import", callback=lambda: set_right_tab("paste"))
     
     def set_right_tab(tab):
         nonlocal right_tab
@@ -305,9 +381,11 @@ def main():
             try:
                 with open(path, 'r') as f:
                     content = f.read()
+                paste_area.text = content
+                paste_area.cursor_pos = len(content)
                 perform_parse(content)
             except Exception as e:
-                toast.show(f"Error parsing file: {e}", is_error=True)
+                toast.show(f"{tr('toast_parse_error')}{e}", is_error=True)
 
     def handle_parse_pasted():
         content = paste_area.text
@@ -381,7 +459,6 @@ def main():
 
     # Buttons layout setup
     btn_save = Button((WINDOW_WIDTH - 60, 20, 40, 30), "", callback=handle_save_active, icon="save", no_bg=False)
-    btn_parse = Button((20, WINDOW_HEIGHT - 50, 460, 35), "Parse SV Module File", callback=handle_parse_file, bg_color_key="list.activeSelectionBackground")
     btn_copy = Button((WINDOW_WIDTH - 140, 65, 120, 26), "Copy Code", callback=handle_copy_code, bg_color_key="button.background")
 
     # Zoom Buttons for Diagram & Code Preview
@@ -391,7 +468,8 @@ def main():
     btn_code_zoom_in = Button((WINDOW_WIDTH - 250, 65, 30, 26), "+", callback=zoom_code_in)
     btn_code_zoom_out = Button((WINDOW_WIDTH - 210, 65, 30, 26), "-", callback=zoom_code_out)
 
-    # Parse pasted code button
+    # Parse and Import buttons inside Paste or Import Tab
+    btn_import_file = Button((WINDOW_WIDTH - 430, WINDOW_HEIGHT - 60, 200, 30), "Import SV File", callback=handle_parse_file, bg_color_key="list.activeSelectionBackground")
     btn_parse_pasted = Button((WINDOW_WIDTH - 220, WINDOW_HEIGHT - 60, 200, 30), "Parse Pasted Code", callback=handle_parse_pasted, is_accent=True)
 
     def update_tab_highlights():
@@ -416,7 +494,7 @@ def main():
             is_active_low_reset = active_low_cb.checked
             update_code_cache()
             
-        curr_mode = "standalone" if tb_mode_toggle.getValue() == "Standalone" else "chained"
+        curr_mode = "standalone" if tb_mode_toggle.index == 0 else "chained"
         if tb_mode != curr_mode:
             tb_mode = curr_mode
             # Disable Master TB subtab in Standalone mode
@@ -426,25 +504,56 @@ def main():
             
         update_tab_highlights()
 
+        # Cursor and separator drag handling
+        mouse_pos = pygame.mouse.get_pos()
+        on_separator = abs(mouse_pos[0] - sidebar_width) < 5
+        if is_dragging_separator or on_separator:
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEWE)
+        else:
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+
+        # Update language and theme from toggle in preferences
+        sel_lang = "en" if pref_lang_toggle.index == 0 else "fr"
+        if ui_components.current_language != sel_lang:
+            ui_components.current_language = sel_lang
+            
+        theme_names = ["Dark (Default)", "Light", "Solarized"]
+        sel_theme = theme_names[pref_theme_toggle.index]
+        if current_theme_name != sel_theme:
+            current_theme_name = sel_theme
+            theme.apply_preset(sel_theme)
+
         # Update responsive UI layouts
-        ports_scroll.rect.height = WINDOW_HEIGHT - 330
+        ports_scroll.rect.width = sidebar_width - 40
+        ports_scroll.rect.height = WINDOW_HEIGHT - 280 # Extended to bottom!
         
         # Recalculate Right Panel Widgets
-        w_right = WINDOW_WIDTH - 540
+        w_right = WINDOW_WIDTH - (sidebar_width + 40)
         code_scroll_h = WINDOW_HEIGHT - 130
         
+        code_preview_area.rect.x = sidebar_width + 20
         code_preview_area.rect.width = w_right
         code_preview_area.rect.height = code_scroll_h
         
+        paste_area.rect.x = sidebar_width + 20
         paste_area.rect.width = w_right
         paste_area.rect.height = WINDOW_HEIGHT - 180
         
+        diagram_visualizer.rect.x = sidebar_width + 20
         diagram_visualizer.rect.width = w_right
         diagram_visualizer.rect.height = WINDOW_HEIGHT - 85
         
         # Button placement offsets
+        btn_tab_diagram.rect.x = sidebar_width + 20
+        btn_tab_code.rect.x = sidebar_width + 180
+        btn_tab_paste.rect.x = sidebar_width + 340
+        
+        btn_subtab_mod.rect.x = sidebar_width + 20
+        btn_subtab_tb.rect.x = sidebar_width + 150
+        btn_subtab_master.rect.x = sidebar_width + 280
+        
         btn_save.rect.x = WINDOW_WIDTH - 60
-        btn_parse.rect.y = WINDOW_HEIGHT - 50
+        btn_prefs.rect.x = sidebar_width - 120
         
         btn_copy.rect.x = WINDOW_WIDTH - 140
         btn_code_zoom_in.rect.x = WINDOW_WIDTH - 250
@@ -453,6 +562,8 @@ def main():
         btn_diag_zoom_in.rect.x = WINDOW_WIDTH - 100
         btn_diag_zoom_out.rect.x = WINDOW_WIDTH - 60
         
+        btn_import_file.rect.x = WINDOW_WIDTH - 430
+        btn_import_file.rect.y = WINDOW_HEIGHT - 60
         btn_parse_pasted.rect.x = WINDOW_WIDTH - 220
         btn_parse_pasted.rect.y = WINDOW_HEIGHT - 60
 
@@ -467,6 +578,35 @@ def main():
                 WINDOW_WIDTH = event.w
                 WINDOW_HEIGHT = event.h
                 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
+
+            # Divider dragging event handling
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if on_separator and not show_preferences_modal:
+                    is_dragging_separator = True
+                    module_name_input.focused = False
+                    for r in port_rows:
+                        r.name_input.focused = False
+                        r.width_input.focused = False
+                    continue
+                    
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                is_dragging_separator = False
+                
+            elif event.type == pygame.MOUSEMOTION:
+                if is_dragging_separator:
+                    sidebar_width = max(350, min(WINDOW_WIDTH - 400, event.pos[0]))
+                    continue
+
+            # Preferences Modal Event Interception
+            if show_preferences_modal:
+                pref_lang_toggle.handle_event(event)
+                pref_theme_toggle.handle_event(event)
+                btn_pref_ui_dec.handle_event(event)
+                btn_pref_ui_inc.handle_event(event)
+                btn_pref_ed_dec.handle_event(event)
+                btn_pref_ed_inc.handle_event(event)
+                btn_pref_close.handle_event(event)
+                continue
 
             # Global keys
             if event.type == pygame.KEYDOWN:
@@ -512,7 +652,7 @@ def main():
             
             btn_add_input.handle_event(event)
             btn_add_output.handle_event(event)
-            btn_parse.handle_event(event)
+            btn_prefs.handle_event(event)
             
             # Right panel tabs
             btn_tab_diagram.handle_event(event)
@@ -533,10 +673,11 @@ def main():
                 btn_code_zoom_in.handle_event(event)
                 btn_code_zoom_out.handle_event(event)
                 code_preview_area.handle_event(event)
-                
+            
             elif right_tab == "paste":
                 paste_area.handle_event(event)
                 btn_parse_pasted.handle_event(event)
+                btn_import_file.handle_event(event)
 
             # Ports scroll area handling
             ports_scroll.handle_event(event)
@@ -546,67 +687,80 @@ def main():
             offset_pos = (mouse_pos[0], mouse_pos[1] + ports_scroll.scroll_y) if in_scroll_viewport else (-1, -1)
             
             for idx, row in enumerate(port_rows):
-                row.set_positions(20, 260 + idx * 36)
+                row.set_positions(20, 260 + idx * 36, sidebar_width - 40)
                 row.handle_event(event, offset_pos)
 
         # Update
-        module_name_input.update()
-        sync_reset_cb.update()
-        active_low_cb.update()
-        
-        btn_add_clk.update()
-        btn_add_rst.update()
-        tb_mode_toggle.update()
-        
-        btn_add_input.update()
-        btn_add_output.update()
-        btn_parse.update()
-        btn_save.update()
-        
-        btn_tab_diagram.update()
-        btn_tab_code.update()
-        btn_tab_paste.update()
-        
-        if right_tab == "diagram":
-            btn_diag_zoom_in.update()
-            btn_diag_zoom_out.update()
+        if show_preferences_modal:
+            pref_lang_toggle.update()
+            pref_theme_toggle.update()
+            btn_pref_ui_dec.update()
+            btn_pref_ui_inc.update()
+            btn_pref_ed_dec.update()
+            btn_pref_ed_inc.update()
+            btn_pref_close.update()
+        else:
+            module_name_input.update()
+            sync_reset_cb.update()
+            active_low_cb.update()
             
-        elif right_tab == "code":
-            btn_subtab_mod.update()
-            btn_subtab_tb.update()
-            if tb_mode == "chained":
-                btn_subtab_master.update()
-            btn_copy.update()
-            btn_code_zoom_in.update()
-            btn_code_zoom_out.update()
-            code_preview_area.update()
+            btn_add_clk.update()
+            btn_add_rst.update()
+            tb_mode_toggle.update()
             
-        elif right_tab == "paste":
-            paste_area.update()
-            btn_parse_pasted.update()
+            btn_add_input.update()
+            btn_add_output.update()
+            btn_prefs.update()
+            btn_save.update()
             
-        for r in port_rows:
-            r.update()
+            btn_tab_diagram.update()
+            btn_tab_code.update()
+            btn_tab_paste.update()
+            
+            if right_tab == "diagram":
+                btn_diag_zoom_in.update()
+                btn_diag_zoom_out.update()
+                
+            elif right_tab == "code":
+                btn_subtab_mod.update()
+                btn_subtab_tb.update()
+                if tb_mode == "chained":
+                    btn_subtab_master.update()
+                btn_copy.update()
+                btn_code_zoom_in.update()
+                btn_code_zoom_out.update()
+                code_preview_area.update()
+                
+            elif right_tab == "paste":
+                paste_area.update()
+                btn_parse_pasted.update()
+                btn_import_file.update()
+                
+            for r in port_rows:
+                r.update()
             
         ports_scroll.virtual_height = len(ports) * 36
         
         # Always update code cache if right tab is "code" to avoid desync
-        if right_tab == "code":
+        if right_tab == "code" and not show_preferences_modal:
             update_code_cache()
 
         # Rendering
         screen.fill(theme.colors["editor.background"])
-        
-        # 1. DRAW LEFT PANEL (SideBar)
-        sidebar_rect = pygame.Rect(0, 0, 500, WINDOW_HEIGHT)
+                # 1. DRAW LEFT PANEL (SideBar)
+        sidebar_rect = pygame.Rect(0, 0, sidebar_width, WINDOW_HEIGHT)
         pygame.draw.rect(screen, theme.colors["sideBar.background"], sidebar_rect)
-        pygame.draw.line(screen, theme.colors["sideBar.border"], (500, 0), (500, WINDOW_HEIGHT), 2)
+        pygame.draw.line(screen, theme.colors["sideBar.border"], (sidebar_width, 0), (sidebar_width, WINDOW_HEIGHT), 2)
         
-        lbl_title = theme.fonts["header"].render("SystemVerilog Designer", True, theme.colors["editor.foreground"])
+        lbl_title = theme.fonts["header"].render(tr("title"), True, theme.colors["editor.foreground"])
         screen.blit(lbl_title, (20, 20))
+        btn_prefs.draw(screen)
         
-        lbl_mod = theme.fonts["body"].render("Module Name:", True, theme.colors["editor.foreground"])
+        lbl_mod = theme.fonts["body"].render(tr("module_name"), True, theme.colors["editor.foreground"])
         screen.blit(lbl_mod, (20, 60))
+        
+        # Scale input box dynamically
+        module_name_input.rect.width = sidebar_width - 160
         module_name_input.draw(screen)
         
         active_low_cb.draw(screen)
@@ -615,24 +769,29 @@ def main():
         btn_add_clk.draw(screen)
         btn_add_rst.draw(screen)
         
-        pygame.draw.line(screen, theme.colors["sideBar.border"], (20, 155), (480, 155), 1)
+        pygame.draw.line(screen, theme.colors["sideBar.border"], (20, 155), (sidebar_width - 20, 155), 1)
         
-        lbl_tb_title = theme.fonts["body_bold"].render("Testbench Settings", True, theme.colors["editor.foreground"])
+        lbl_tb_title = theme.fonts["body_bold"].render(tr("tb_settings"), True, theme.colors["editor.foreground"])
         screen.blit(lbl_tb_title, (20, 162))
+        
+        # Scale toggle button to fill space
+        tb_mode_toggle.rect.width = sidebar_width - 40
         tb_mode_toggle.draw(screen)
         
-        pygame.draw.line(screen, theme.colors["sideBar.border"], (20, 220), (480, 220), 1)
+        pygame.draw.line(screen, theme.colors["sideBar.border"], (20, 220), (sidebar_width - 20, 220), 1)
         
-        lbl_ports = theme.fonts["body_bold"].render("Module Ports", True, theme.colors["editor.foreground"])
+        lbl_ports = theme.fonts["body_bold"].render(tr("module_ports"), True, theme.colors["editor.foreground"])
         screen.blit(lbl_ports, (20, 228))
         
+        btn_add_output.rect.x = sidebar_width - 130
+        btn_add_input.rect.x = sidebar_width - 250
         btn_add_input.draw(screen)
         btn_add_output.draw(screen)
         
         def draw_ports_list(surface, scroll_y):
             for idx, r in enumerate(port_rows):
                 ry = 260 + idx * 36
-                r.set_positions(20, ry)
+                r.set_positions(20, ry, sidebar_width - 40)
                 
                 original_pos = (r.dir_toggle.rect.y, r.name_input.rect.y, r.width_input.rect.y, r.del_btn.rect.y)
                 r.dir_toggle.rect.y -= scroll_y
@@ -649,9 +808,6 @@ def main():
                 
         ports_scroll.draw(screen, draw_ports_list)
         
-        pygame.draw.line(screen, theme.colors["sideBar.border"], (20, WINDOW_HEIGHT - 60), (480, WINDOW_HEIGHT - 60), 1)
-        btn_parse.draw(screen)
-        
         # 2. DRAW RIGHT PANEL (Viewer)
         btn_tab_diagram.draw(screen)
         btn_tab_code.draw(screen)
@@ -664,7 +820,7 @@ def main():
             btn_diag_zoom_out.draw(screen)
             
         elif right_tab == "code":
-            code_bg_rect = pygame.Rect(520, 65, w_right, WINDOW_HEIGHT - 85)
+            code_bg_rect = pygame.Rect(sidebar_width + 20, 65, w_right, WINDOW_HEIGHT - 85)
             pygame.draw.rect(screen, theme.colors["sideBar.background"], code_bg_rect, border_radius=12)
             pygame.draw.rect(screen, theme.colors["sideBar.border"], code_bg_rect, width=2, border_radius=12)
             
@@ -676,12 +832,72 @@ def main():
             btn_code_zoom_in.draw(screen)
             btn_code_zoom_out.draw(screen)
             
-            pygame.draw.line(screen, theme.colors["sideBar.border"], (520, 100), (WINDOW_WIDTH - 20, 100), 1)
+            pygame.draw.line(screen, theme.colors["sideBar.border"], (sidebar_width + 20, 100), (WINDOW_WIDTH - 20, 100), 1)
             code_preview_area.draw(screen)
             
         elif right_tab == "paste":
             paste_area.draw(screen)
             btn_parse_pasted.draw(screen)
+            btn_import_file.draw(screen)
+
+        # 3. DRAW PREFERENCES MODAL
+        if show_preferences_modal:
+            # Semi-transparent overlay backdrop
+            overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 180))
+            screen.blit(overlay, (0, 0))
+            
+            # Position the modal card in the center
+            card_x = (WINDOW_WIDTH - pref_card_w) // 2
+            card_y = (WINDOW_HEIGHT - pref_card_h) // 2
+            
+            card_rect = pygame.Rect(card_x, card_y, pref_card_w, pref_card_h)
+            pygame.draw.rect(screen, theme.colors["sideBar.background"], card_rect, border_radius=12)
+            pygame.draw.rect(screen, theme.colors["sideBar.border"], card_rect, width=2, border_radius=12)
+            
+            # Header Title
+            lbl_pref_title = theme.fonts["header"].render(tr("pref_title"), True, theme.colors["editor.foreground"])
+            screen.blit(lbl_pref_title, (card_x + (pref_card_w - lbl_pref_title.get_width()) // 2, card_y + 20))
+            
+            # Row 1: Language
+            lbl_lang = theme.fonts["body_bold"].render(tr("pref_lang"), True, theme.colors["editor.foreground"])
+            screen.blit(lbl_lang, (card_x + 30, card_y + 80))
+            pref_lang_toggle.rect.topleft = (card_x + 220, card_y + 75)
+            pref_lang_toggle.draw(screen)
+            
+            # Row 2: UI Scale
+            lbl_ui = theme.fonts["body_bold"].render(tr("pref_ui_scale"), True, theme.colors["editor.foreground"])
+            screen.blit(lbl_ui, (card_x + 30, card_y + 130))
+            
+            btn_pref_ui_dec.rect.topleft = (card_x + 220, card_y + 125)
+            btn_pref_ui_inc.rect.topleft = (card_x + 350, card_y + 125)
+            btn_pref_ui_dec.draw(screen)
+            btn_pref_ui_inc.draw(screen)
+            
+            lbl_ui_val = theme.fonts["body"].render(f"{int(ui_font_scale * 100)}%", True, theme.colors["editor.foreground"])
+            screen.blit(lbl_ui_val, (card_x + 270 + (60 - lbl_ui_val.get_width()) // 2, card_y + 128))
+            
+            # Row 3: Editor Size
+            lbl_ed = theme.fonts["body_bold"].render(tr("pref_editor_size"), True, theme.colors["editor.foreground"])
+            screen.blit(lbl_ed, (card_x + 30, card_y + 180))
+            
+            btn_pref_ed_dec.rect.topleft = (card_x + 220, card_y + 175)
+            btn_pref_ed_inc.rect.topleft = (card_x + 350, card_y + 175)
+            btn_pref_ed_dec.draw(screen)
+            btn_pref_ed_inc.draw(screen)
+            
+            lbl_ed_val = theme.fonts["body"].render(f"{code_font_size}px", True, theme.colors["editor.foreground"])
+            screen.blit(lbl_ed_val, (card_x + 270 + (60 - lbl_ed_val.get_width()) // 2, card_y + 178))
+            
+            # Row 4: Theme
+            lbl_th = theme.fonts["body_bold"].render(tr("pref_theme"), True, theme.colors["editor.foreground"])
+            screen.blit(lbl_th, (card_x + 30, card_y + 230))
+            pref_theme_toggle.rect.topleft = (card_x + 220, card_y + 225)
+            pref_theme_toggle.draw(screen)
+            
+            # Bottom Close Button
+            btn_pref_close.rect.topleft = (card_x + (pref_card_w - 150) // 2, card_y + 290)
+            btn_pref_close.draw(screen)
 
         # Draw Toast notifications
         toast.draw(screen, WINDOW_WIDTH, WINDOW_HEIGHT)
