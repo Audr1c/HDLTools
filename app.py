@@ -173,7 +173,9 @@ def main():
         theme.init_fonts(ui_scale=ui_font_scale)
         theme.fonts["code"] = pygame.font.SysFont(theme.mono_name, code_font_size)
         theme.fonts["code_large"] = pygame.font.SysFont(theme.mono_name, code_font_size + 2)
-        toast.show(f"UI Font Scale: {int(ui_font_scale * 100)}%")
+        recalculate_all_layouts()
+        msg = f"Taille UI : {int(ui_font_scale * 100)}%" if ui_components.current_language == "fr" else f"UI Size: {int(ui_font_scale * 100)}%"
+        toast.show(msg)
         
     def ui_inc():
         nonlocal ui_font_scale
@@ -181,7 +183,9 @@ def main():
         theme.init_fonts(ui_scale=ui_font_scale)
         theme.fonts["code"] = pygame.font.SysFont(theme.mono_name, code_font_size)
         theme.fonts["code_large"] = pygame.font.SysFont(theme.mono_name, code_font_size + 2)
-        toast.show(f"UI Font Scale: {int(ui_font_scale * 100)}%")
+        recalculate_all_layouts()
+        msg = f"Taille UI : {int(ui_font_scale * 100)}%" if ui_components.current_language == "fr" else f"UI Size: {int(ui_font_scale * 100)}%"
+        toast.show(msg)
         
     btn_pref_ui_dec = Button((0, 0, 30, 26), "-", callback=ui_dec)
     btn_pref_ui_inc = Button((0, 0, 30, 26), "+", callback=ui_inc)
@@ -262,15 +266,20 @@ def main():
         name = f"in_port_{len(ports)}"
         ports.append({"name": name, "dir": "IN", "width": "1"})
         rebuild_port_rows()
-        ports_scroll.scroll_y = max(0, len(ports) * 36 - ports_scroll.rect.height)
+        ports_scroll.scroll_y = max(0, len(ports) * int(36 * ui_font_scale) - ports_scroll.rect.height)
         toast.show(f"Added input '{name}'")
         
     def add_output_port():
         name = f"out_port_{len(ports)}"
         ports.append({"name": name, "dir": "OUT", "width": "1"})
         rebuild_port_rows()
-        ports_scroll.scroll_y = max(0, len(ports) * 36 - ports_scroll.rect.height)
+        ports_scroll.scroll_y = max(0, len(ports) * int(36 * ui_font_scale) - ports_scroll.rect.height)
         toast.show(f"Added output '{name}'")
+
+    line1_y = 155
+    lbl_tb_title_y = 162
+    line2_y = 220
+    lbl_ports_y = 228
 
     # Scroll Areas & Multi-Line TextAreas
     ports_scroll = ScrollArea((20, 260, sidebar_width - 40, WINDOW_HEIGHT - 280))
@@ -472,6 +481,234 @@ def main():
     btn_import_file = Button((WINDOW_WIDTH - 430, WINDOW_HEIGHT - 60, 200, 30), "Import SV File", callback=handle_parse_file, bg_color_key="list.activeSelectionBackground")
     btn_parse_pasted = Button((WINDOW_WIDTH - 220, WINDOW_HEIGHT - 60, 200, 30), "Parse Pasted Code", callback=handle_parse_pasted, is_accent=True)
 
+    def update_sidebar_rects():
+        scale = ui_font_scale
+        pad = int(20 * scale)
+        h_widget = int(26 * scale)
+        
+        # Title
+        title_y = int(20 * scale)
+        lbl_title_h = theme.fonts["header"].get_linesize()
+        
+        # Preferences button
+        btn_prefs.rect.width = int(100 * scale)
+        btn_prefs.rect.height = h_widget
+        btn_prefs.rect.x = sidebar_width - btn_prefs.rect.width - pad
+        btn_prefs.rect.y = title_y
+        
+        # Module Name Row
+        mod_name_y = title_y + lbl_title_h + int(15 * scale)
+        lbl_mod_w = theme.fonts["body"].size(tr("module_name"))[0]
+        module_name_input.rect.x = pad + lbl_mod_w + int(10 * scale)
+        module_name_input.rect.y = mod_name_y + (theme.fonts["body"].get_height() - h_widget) // 2
+        module_name_input.rect.width = sidebar_width - module_name_input.rect.x - pad
+        module_name_input.rect.height = h_widget
+        
+        # Checkboxes Row
+        cb_y = max(module_name_input.rect.bottom, mod_name_y + theme.fonts["body"].get_height()) + int(12 * scale)
+        cb_w = (sidebar_width - pad * 2 - int(10 * scale)) // 2
+        active_low_cb.rect = pygame.Rect(pad, cb_y, cb_w, h_widget)
+        sync_reset_cb.rect = pygame.Rect(pad + cb_w + int(10 * scale), cb_y, cb_w, h_widget)
+        
+        # Add Clock / Add Reset Buttons
+        btn_y = cb_y + h_widget + int(12 * scale)
+        btn_w = (sidebar_width - pad * 2 - int(10 * scale)) // 2
+        btn_add_clk.rect = pygame.Rect(pad, btn_y, btn_w, h_widget)
+        btn_add_rst.rect = pygame.Rect(pad + btn_w + int(10 * scale), btn_y, btn_w, h_widget)
+        
+        # Testbench Settings header Y
+        nonlocal line1_y, lbl_tb_title_y, line2_y, lbl_ports_y
+        line1_y = btn_y + h_widget + int(15 * scale)
+        lbl_tb_title_y = line1_y + int(8 * scale)
+        lbl_tb_title_h = theme.fonts["body_bold"].get_height()
+        
+        # TB Mode Toggle
+        toggle_y = lbl_tb_title_y + lbl_tb_title_h + int(10 * scale)
+        tb_mode_toggle.rect = pygame.Rect(pad, toggle_y, sidebar_width - pad * 2, h_widget)
+        
+        # Module Ports Header
+        line2_y = toggle_y + h_widget + int(15 * scale)
+        lbl_ports_y = line2_y + int(8 * scale)
+        lbl_ports_h = theme.fonts["body_bold"].get_height()
+        
+        # Add Input / Add Output buttons
+        btn_pw = int(110 * scale)
+        btn_add_output.rect.width = btn_pw
+        btn_add_output.rect.height = h_widget
+        btn_add_output.rect.x = sidebar_width - pad - btn_pw
+        btn_add_output.rect.y = lbl_ports_y + (lbl_ports_h - h_widget) // 2
+        
+        btn_add_input.rect.width = btn_pw
+        btn_add_input.rect.height = h_widget
+        btn_add_input.rect.x = btn_add_output.rect.x - int(10 * scale) - btn_pw
+        btn_add_input.rect.y = btn_add_output.rect.y
+        
+        # Ports Scroll Area
+        scroll_y_start = max(lbl_ports_y + lbl_ports_h, btn_add_input.rect.bottom) + int(10 * scale)
+        ports_scroll.rect.x = pad
+        ports_scroll.rect.y = scroll_y_start
+        ports_scroll.rect.width = sidebar_width - pad * 2
+        ports_scroll.rect.height = WINDOW_HEIGHT - scroll_y_start - int(20 * scale)
+        
+        row_total_h = h_widget + int(10 * scale)
+        ports_scroll.virtual_height = len(ports) * row_total_h
+
+    def update_right_panel_rects():
+        scale = ui_font_scale
+        right_margin = int(20 * scale)
+        gap = int(10 * scale)
+        
+        # Tabs
+        tab_w = int(150 * scale)
+        tab_h = int(30 * scale)
+        
+        btn_tab_diagram.rect.width = tab_w
+        btn_tab_diagram.rect.height = tab_h
+        btn_tab_diagram.rect.x = sidebar_width + int(20 * scale)
+        btn_tab_diagram.rect.y = int(20 * scale)
+        
+        btn_tab_code.rect.width = tab_w
+        btn_tab_code.rect.height = tab_h
+        btn_tab_code.rect.x = btn_tab_diagram.rect.right + gap
+        btn_tab_code.rect.y = btn_tab_diagram.rect.y
+        
+        btn_tab_paste.rect.width = tab_w
+        btn_tab_paste.rect.height = tab_h
+        btn_tab_paste.rect.x = btn_tab_code.rect.right + gap
+        btn_tab_paste.rect.y = btn_tab_diagram.rect.y
+        
+        # Save button
+        save_w = int(40 * scale)
+        save_h = int(30 * scale)
+        btn_save.rect.width = save_w
+        btn_save.rect.height = save_h
+        btn_save.rect.x = WINDOW_WIDTH - save_w - right_margin
+        btn_save.rect.y = btn_tab_diagram.rect.y
+        
+        # Subtabs for Code Tab
+        sub_w = int(120 * scale)
+        sub_h = int(26 * scale)
+        subtab_y = btn_tab_diagram.rect.bottom + int(15 * scale)
+        
+        btn_subtab_mod.rect.width = sub_w
+        btn_subtab_mod.rect.height = sub_h
+        btn_subtab_mod.rect.x = sidebar_width + int(20 * scale)
+        btn_subtab_mod.rect.y = subtab_y
+        
+        btn_subtab_tb.rect.width = sub_w
+        btn_subtab_tb.rect.height = sub_h
+        btn_subtab_tb.rect.x = btn_subtab_mod.rect.right + gap
+        btn_subtab_tb.rect.y = subtab_y
+        
+        btn_subtab_master.rect.width = sub_w
+        btn_subtab_master.rect.height = sub_h
+        btn_subtab_master.rect.x = btn_subtab_tb.rect.right + gap
+        btn_subtab_master.rect.y = subtab_y
+        
+        # Code Zoom & Copy Buttons
+        w_zoom = int(30 * scale)
+        btn_copy.rect.width = int(120 * scale)
+        btn_copy.rect.height = sub_h
+        btn_copy.rect.x = WINDOW_WIDTH - right_margin - btn_copy.rect.width
+        btn_copy.rect.y = subtab_y
+        
+        btn_code_zoom_out.rect.width = w_zoom
+        btn_code_zoom_out.rect.height = sub_h
+        btn_code_zoom_out.rect.x = btn_copy.rect.x - gap - w_zoom
+        btn_code_zoom_out.rect.y = subtab_y
+        
+        btn_code_zoom_in.rect.width = w_zoom
+        btn_code_zoom_in.rect.height = sub_h
+        btn_code_zoom_in.rect.x = btn_code_zoom_out.rect.x - gap - w_zoom
+        btn_code_zoom_in.rect.y = subtab_y
+        
+        # Areas and diagram
+        # Diagram Rect
+        diagram_visualizer.rect.x = sidebar_width + int(20 * scale)
+        diagram_visualizer.rect.y = btn_tab_diagram.rect.bottom + int(15 * scale)
+        diagram_visualizer.rect.width = WINDOW_WIDTH - diagram_visualizer.rect.x - right_margin
+        diagram_visualizer.rect.height = WINDOW_HEIGHT - diagram_visualizer.rect.y - right_margin
+        
+        # Diagram Zoom buttons
+        w_diag_zoom = int(30 * scale)
+        h_diag_zoom = int(30 * scale)
+        btn_diag_zoom_out.rect.width = w_diag_zoom
+        btn_diag_zoom_out.rect.height = h_diag_zoom
+        btn_diag_zoom_out.rect.x = WINDOW_WIDTH - right_margin - w_diag_zoom - int(10 * scale)
+        btn_diag_zoom_out.rect.y = diagram_visualizer.rect.y + int(15 * scale)
+        
+        btn_diag_zoom_in.rect.width = w_diag_zoom
+        btn_diag_zoom_in.rect.height = h_diag_zoom
+        btn_diag_zoom_in.rect.x = btn_diag_zoom_out.rect.x - w_diag_zoom - int(8 * scale)
+        btn_diag_zoom_in.rect.y = btn_diag_zoom_out.rect.y
+        
+        # Code Preview Area
+        code_preview_area.rect.x = sidebar_width + int(20 * scale)
+        code_preview_area.rect.y = subtab_y + sub_h + int(10 * scale)
+        code_preview_area.rect.width = WINDOW_WIDTH - code_preview_area.rect.x - right_margin
+        code_preview_area.rect.height = WINDOW_HEIGHT - code_preview_area.rect.y - right_margin
+        
+        # Paste Tab Buttons & Area
+        btn_w = int(200 * scale)
+        btn_h = int(30 * scale)
+        
+        btn_parse_pasted.rect.width = btn_w
+        btn_parse_pasted.rect.height = btn_h
+        btn_parse_pasted.rect.x = WINDOW_WIDTH - right_margin - btn_w
+        btn_parse_pasted.rect.y = WINDOW_HEIGHT - btn_h - int(20 * scale)
+        
+        btn_import_file.rect.width = btn_w
+        btn_import_file.rect.height = btn_h
+        btn_import_file.rect.x = btn_parse_pasted.rect.x - btn_w - int(15 * scale)
+        btn_import_file.rect.y = btn_parse_pasted.rect.y
+        
+        paste_area.rect.x = sidebar_width + int(20 * scale)
+        paste_area.rect.y = btn_tab_diagram.rect.bottom + int(15 * scale)
+        paste_area.rect.width = WINDOW_WIDTH - paste_area.rect.x - right_margin
+        paste_area.rect.height = btn_parse_pasted.rect.y - paste_area.rect.y - int(15 * scale)
+
+    def update_pref_modal_rects():
+        nonlocal pref_card_w, pref_card_h
+        scale = ui_font_scale
+        pref_card_w = int(450 * scale)
+        pref_card_h = int(350 * scale)
+        card_x = (WINDOW_WIDTH - pref_card_w) // 2
+        card_y = (WINDOW_HEIGHT - pref_card_h) // 2
+        h_widget = int(26 * scale)
+        
+        pref_lang_toggle.rect.topleft = (card_x + int(220 * scale), card_y + int(75 * scale))
+        pref_lang_toggle.rect.width = int(180 * scale)
+        pref_lang_toggle.rect.height = h_widget
+        
+        btn_pref_ui_dec.rect.topleft = (card_x + int(220 * scale), card_y + int(125 * scale))
+        btn_pref_ui_dec.rect.width = int(30 * scale)
+        btn_pref_ui_dec.rect.height = h_widget
+        
+        btn_pref_ui_inc.rect.topleft = (card_x + int(350 * scale), card_y + int(125 * scale))
+        btn_pref_ui_inc.rect.width = int(30 * scale)
+        btn_pref_ui_inc.rect.height = h_widget
+        
+        btn_pref_ed_dec.rect.topleft = (card_x + int(220 * scale), card_y + int(175 * scale))
+        btn_pref_ed_dec.rect.width = int(30 * scale)
+        btn_pref_ed_dec.rect.height = h_widget
+        
+        btn_pref_ed_inc.rect.topleft = (card_x + int(350 * scale), card_y + int(175 * scale))
+        btn_pref_ed_inc.rect.width = int(30 * scale)
+        btn_pref_ed_inc.rect.height = h_widget
+        
+        pref_theme_toggle.rect.topleft = (card_x + int(220 * scale), card_y + int(225 * scale))
+        pref_theme_toggle.rect.width = int(180 * scale)
+        pref_theme_toggle.rect.height = h_widget
+        
+        btn_pref_close.rect.width = int(150 * scale)
+        btn_pref_close.rect.height = int(30 * scale)
+        btn_pref_close.rect.topleft = (card_x + (pref_card_w - btn_pref_close.rect.width) // 2, card_y + int(290 * scale))
+
+    def recalculate_all_layouts():
+        update_sidebar_rects()
+        update_right_panel_rects()
+        update_pref_modal_rects()
+
     def update_tab_highlights():
         btn_tab_diagram.is_accent = (right_tab == "diagram")
         btn_tab_code.is_accent = (right_tab == "code")
@@ -481,6 +718,7 @@ def main():
         btn_subtab_master.is_accent = (code_subtab == "master")
 
     # Main Loop
+    recalculate_all_layouts()
     while True:
         # State update checks
         if module_name != module_name_input.text:
@@ -524,48 +762,7 @@ def main():
             theme.apply_preset(sel_theme)
 
         # Update responsive UI layouts
-        ports_scroll.rect.width = sidebar_width - 40
-        ports_scroll.rect.height = WINDOW_HEIGHT - 280 # Extended to bottom!
-        
-        # Recalculate Right Panel Widgets
-        w_right = WINDOW_WIDTH - (sidebar_width + 40)
-        code_scroll_h = WINDOW_HEIGHT - 130
-        
-        code_preview_area.rect.x = sidebar_width + 20
-        code_preview_area.rect.width = w_right
-        code_preview_area.rect.height = code_scroll_h
-        
-        paste_area.rect.x = sidebar_width + 20
-        paste_area.rect.width = w_right
-        paste_area.rect.height = WINDOW_HEIGHT - 180
-        
-        diagram_visualizer.rect.x = sidebar_width + 20
-        diagram_visualizer.rect.width = w_right
-        diagram_visualizer.rect.height = WINDOW_HEIGHT - 85
-        
-        # Button placement offsets
-        btn_tab_diagram.rect.x = sidebar_width + 20
-        btn_tab_code.rect.x = sidebar_width + 180
-        btn_tab_paste.rect.x = sidebar_width + 340
-        
-        btn_subtab_mod.rect.x = sidebar_width + 20
-        btn_subtab_tb.rect.x = sidebar_width + 150
-        btn_subtab_master.rect.x = sidebar_width + 280
-        
-        btn_save.rect.x = WINDOW_WIDTH - 60
-        btn_prefs.rect.x = sidebar_width - 120
-        
-        btn_copy.rect.x = WINDOW_WIDTH - 140
-        btn_code_zoom_in.rect.x = WINDOW_WIDTH - 250
-        btn_code_zoom_out.rect.x = WINDOW_WIDTH - 210
-        
-        btn_diag_zoom_in.rect.x = WINDOW_WIDTH - 100
-        btn_diag_zoom_out.rect.x = WINDOW_WIDTH - 60
-        
-        btn_import_file.rect.x = WINDOW_WIDTH - 430
-        btn_import_file.rect.y = WINDOW_HEIGHT - 60
-        btn_parse_pasted.rect.x = WINDOW_WIDTH - 220
-        btn_parse_pasted.rect.y = WINDOW_HEIGHT - 60
+        recalculate_all_layouts()
 
         # Event handling
         events = pygame.event.get()
@@ -634,12 +831,13 @@ def main():
                         start_ports_idx = 1
                         if next_idx >= start_ports_idx:
                             row_idx = (next_idx - start_ports_idx) // 2
-                            target_vy = row_idx * 36
+                            row_total_h = int(36 * ui_font_scale)
+                            target_vy = row_idx * row_total_h
                             viewport_h = ports_scroll.rect.height
                             if target_vy < ports_scroll.scroll_y:
                                 ports_scroll.scroll_y = target_vy
-                            elif target_vy + 36 > ports_scroll.scroll_y + viewport_h:
-                                ports_scroll.scroll_y = target_vy + 36 - viewport_h
+                            elif target_vy + row_total_h > ports_scroll.scroll_y + viewport_h:
+                                ports_scroll.scroll_y = target_vy + row_total_h - viewport_h
 
             # Left panel inputs
             module_name_input.handle_event(event)
@@ -686,8 +884,12 @@ def main():
             in_scroll_viewport = ports_scroll.rect.collidepoint(mouse_pos)
             offset_pos = (mouse_pos[0], mouse_pos[1] + ports_scroll.scroll_y) if in_scroll_viewport else (-1, -1)
             
+            row_start_y = ports_scroll.rect.y
+            row_total_h = int(36 * ui_font_scale)
+            pad_ports = int(20 * ui_font_scale)
+            h_widget = int(26 * ui_font_scale)
             for idx, row in enumerate(port_rows):
-                row.set_positions(20, 260 + idx * 36, sidebar_width - 40)
+                row.set_positions(pad_ports, row_start_y + idx * row_total_h, sidebar_width - pad_ports * 2, h_widget)
                 row.handle_event(event, offset_pos)
 
         # Update
@@ -752,46 +954,44 @@ def main():
         pygame.draw.rect(screen, theme.colors["sideBar.background"], sidebar_rect)
         pygame.draw.line(screen, theme.colors["sideBar.border"], (sidebar_width, 0), (sidebar_width, WINDOW_HEIGHT), 2)
         
+        pad = int(20 * ui_font_scale)
         lbl_title = theme.fonts["header"].render(tr("title"), True, theme.colors["editor.foreground"])
-        screen.blit(lbl_title, (20, 20))
+        screen.blit(lbl_title, (pad, int(20 * ui_font_scale)))
         btn_prefs.draw(screen)
         
         lbl_mod = theme.fonts["body"].render(tr("module_name"), True, theme.colors["editor.foreground"])
-        screen.blit(lbl_mod, (20, 60))
+        lbl_mod_y = module_name_input.rect.y + (module_name_input.rect.height - lbl_mod.get_height()) // 2
+        screen.blit(lbl_mod, (pad, lbl_mod_y))
         
-        # Scale input box dynamically
-        module_name_input.rect.width = sidebar_width - 160
         module_name_input.draw(screen)
-        
         active_low_cb.draw(screen)
         sync_reset_cb.draw(screen)
-        
         btn_add_clk.draw(screen)
         btn_add_rst.draw(screen)
         
-        pygame.draw.line(screen, theme.colors["sideBar.border"], (20, 155), (sidebar_width - 20, 155), 1)
+        pygame.draw.line(screen, theme.colors["sideBar.border"], (pad, line1_y), (sidebar_width - pad, line1_y), 1)
         
         lbl_tb_title = theme.fonts["body_bold"].render(tr("tb_settings"), True, theme.colors["editor.foreground"])
-        screen.blit(lbl_tb_title, (20, 162))
+        screen.blit(lbl_tb_title, (pad, lbl_tb_title_y))
         
-        # Scale toggle button to fill space
-        tb_mode_toggle.rect.width = sidebar_width - 40
         tb_mode_toggle.draw(screen)
         
-        pygame.draw.line(screen, theme.colors["sideBar.border"], (20, 220), (sidebar_width - 20, 220), 1)
+        pygame.draw.line(screen, theme.colors["sideBar.border"], (pad, line2_y), (sidebar_width - pad, line2_y), 1)
         
         lbl_ports = theme.fonts["body_bold"].render(tr("module_ports"), True, theme.colors["editor.foreground"])
-        screen.blit(lbl_ports, (20, 228))
+        screen.blit(lbl_ports, (pad, lbl_ports_y))
         
-        btn_add_output.rect.x = sidebar_width - 130
-        btn_add_input.rect.x = sidebar_width - 250
         btn_add_input.draw(screen)
         btn_add_output.draw(screen)
         
         def draw_ports_list(surface, scroll_y):
+            row_start_y = ports_scroll.rect.y
+            row_total_h = int(36 * ui_font_scale)
+            pad_ports = int(20 * ui_font_scale)
+            h_widget = int(26 * ui_font_scale)
             for idx, r in enumerate(port_rows):
-                ry = 260 + idx * 36
-                r.set_positions(20, ry, sidebar_width - 40)
+                ry = row_start_y + idx * row_total_h
+                r.set_positions(pad_ports, ry, sidebar_width - pad_ports * 2, h_widget)
                 
                 original_pos = (r.dir_toggle.rect.y, r.name_input.rect.y, r.width_input.rect.y, r.del_btn.rect.y)
                 r.dir_toggle.rect.y -= scroll_y
@@ -820,7 +1020,11 @@ def main():
             btn_diag_zoom_out.draw(screen)
             
         elif right_tab == "code":
-            code_bg_rect = pygame.Rect(sidebar_width + 20, 65, w_right, WINDOW_HEIGHT - 85)
+            scale = ui_font_scale
+            pad = int(20 * scale)
+            bg_y = btn_tab_diagram.rect.bottom + int(10 * scale)
+            bg_h = WINDOW_HEIGHT - bg_y - int(20 * scale)
+            code_bg_rect = pygame.Rect(sidebar_width + pad, bg_y, WINDOW_WIDTH - sidebar_width - pad * 2, bg_h)
             pygame.draw.rect(screen, theme.colors["sideBar.background"], code_bg_rect, border_radius=12)
             pygame.draw.rect(screen, theme.colors["sideBar.border"], code_bg_rect, width=2, border_radius=12)
             
@@ -832,7 +1036,8 @@ def main():
             btn_code_zoom_in.draw(screen)
             btn_code_zoom_out.draw(screen)
             
-            pygame.draw.line(screen, theme.colors["sideBar.border"], (sidebar_width + 20, 100), (WINDOW_WIDTH - 20, 100), 1)
+            subtab_bottom = btn_subtab_mod.rect.bottom + int(5 * scale)
+            pygame.draw.line(screen, theme.colors["sideBar.border"], (sidebar_width + pad, subtab_bottom), (WINDOW_WIDTH - pad, subtab_bottom), 1)
             code_preview_area.draw(screen)
             
         elif right_tab == "paste":
@@ -857,46 +1062,41 @@ def main():
             
             # Header Title
             lbl_pref_title = theme.fonts["header"].render(tr("pref_title"), True, theme.colors["editor.foreground"])
-            screen.blit(lbl_pref_title, (card_x + (pref_card_w - lbl_pref_title.get_width()) // 2, card_y + 20))
+            screen.blit(lbl_pref_title, (card_x + (pref_card_w - lbl_pref_title.get_width()) // 2, card_y + int(20 * ui_font_scale)))
             
             # Row 1: Language
             lbl_lang = theme.fonts["body_bold"].render(tr("pref_lang"), True, theme.colors["editor.foreground"])
-            screen.blit(lbl_lang, (card_x + 30, card_y + 80))
-            pref_lang_toggle.rect.topleft = (card_x + 220, card_y + 75)
+            screen.blit(lbl_lang, (card_x + int(30 * ui_font_scale), card_y + int(80 * ui_font_scale)))
             pref_lang_toggle.draw(screen)
             
             # Row 2: UI Scale
             lbl_ui = theme.fonts["body_bold"].render(tr("pref_ui_scale"), True, theme.colors["editor.foreground"])
-            screen.blit(lbl_ui, (card_x + 30, card_y + 130))
-            
-            btn_pref_ui_dec.rect.topleft = (card_x + 220, card_y + 125)
-            btn_pref_ui_inc.rect.topleft = (card_x + 350, card_y + 125)
+            screen.blit(lbl_ui, (card_x + int(30 * ui_font_scale), card_y + int(130 * ui_font_scale)))
             btn_pref_ui_dec.draw(screen)
             btn_pref_ui_inc.draw(screen)
             
             lbl_ui_val = theme.fonts["body"].render(f"{int(ui_font_scale * 100)}%", True, theme.colors["editor.foreground"])
-            screen.blit(lbl_ui_val, (card_x + 270 + (60 - lbl_ui_val.get_width()) // 2, card_y + 128))
+            lbl_ui_val_x = btn_pref_ui_dec.rect.right + (btn_pref_ui_inc.rect.left - btn_pref_ui_dec.rect.right - lbl_ui_val.get_width()) // 2
+            lbl_ui_val_y = btn_pref_ui_dec.rect.y + (btn_pref_ui_dec.rect.height - lbl_ui_val.get_height()) // 2
+            screen.blit(lbl_ui_val, (lbl_ui_val_x, lbl_ui_val_y))
             
             # Row 3: Editor Size
             lbl_ed = theme.fonts["body_bold"].render(tr("pref_editor_size"), True, theme.colors["editor.foreground"])
-            screen.blit(lbl_ed, (card_x + 30, card_y + 180))
-            
-            btn_pref_ed_dec.rect.topleft = (card_x + 220, card_y + 175)
-            btn_pref_ed_inc.rect.topleft = (card_x + 350, card_y + 175)
+            screen.blit(lbl_ed, (card_x + int(30 * ui_font_scale), card_y + int(180 * ui_font_scale)))
             btn_pref_ed_dec.draw(screen)
             btn_pref_ed_inc.draw(screen)
             
             lbl_ed_val = theme.fonts["body"].render(f"{code_font_size}px", True, theme.colors["editor.foreground"])
-            screen.blit(lbl_ed_val, (card_x + 270 + (60 - lbl_ed_val.get_width()) // 2, card_y + 178))
+            lbl_ed_val_x = btn_pref_ed_dec.rect.right + (btn_pref_ed_inc.rect.left - btn_pref_ed_dec.rect.right - lbl_ed_val.get_width()) // 2
+            lbl_ed_val_y = btn_pref_ed_dec.rect.y + (btn_pref_ed_dec.rect.height - lbl_ed_val.get_height()) // 2
+            screen.blit(lbl_ed_val, (lbl_ed_val_x, lbl_ed_val_y))
             
             # Row 4: Theme
             lbl_th = theme.fonts["body_bold"].render(tr("pref_theme"), True, theme.colors["editor.foreground"])
-            screen.blit(lbl_th, (card_x + 30, card_y + 230))
-            pref_theme_toggle.rect.topleft = (card_x + 220, card_y + 225)
+            screen.blit(lbl_th, (card_x + int(30 * ui_font_scale), card_y + int(230 * ui_font_scale)))
             pref_theme_toggle.draw(screen)
             
             # Bottom Close Button
-            btn_pref_close.rect.topleft = (card_x + (pref_card_w - 150) // 2, card_y + 290)
             btn_pref_close.draw(screen)
 
         # Draw Toast notifications

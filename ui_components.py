@@ -30,7 +30,7 @@ TRANSLATIONS = {
         "Copy Code": "Copy Code",
         "Preferences": "Preferences",
         "pref_title": "Preferences",
-        "pref_ui_scale": "UI Font Size:",
+        "pref_ui_scale": "UI Size:",
         "pref_lang": "Language:",
         "pref_editor_size": "Editor Font Size:",
         "pref_theme": "Theme:",
@@ -65,7 +65,7 @@ TRANSLATIONS = {
         "Copy Code": "Copier Code",
         "Preferences": "Préférences",
         "pref_title": "Préférences",
-        "pref_ui_scale": "Taille Police UI :",
+        "pref_ui_scale": "Taille UI :",
         "pref_lang": "Langue :",
         "pref_editor_size": "Taille Code :",
         "pref_theme": "Thème :",
@@ -1320,27 +1320,32 @@ class PortRow:
         self.width_input.update()
         self.del_btn.update()
 
-    def set_positions(self, x, y, width=366):
-        # Scale positions based on available width
+    def set_positions(self, x, y, width=366, height=26):
+        # Scale positions based on available width and height
         active_w = width - 16
-        del_w = 20
-        width_w = 70
-        dir_w = 50
+        del_w = height
+        width_w = int(70 * (height / 26))
+        dir_w = int(50 * (height / 26))
         
         del_x = x + active_w - del_w
         width_x = del_x - 10 - width_w
         
         self.dir_toggle.rect.topleft = (x, y)
         self.dir_toggle.rect.width = dir_w
+        self.dir_toggle.rect.height = height
         
-        name_w = max(50, width_x - (x + 60) - 10)
-        self.name_input.rect.topleft = (x + 60, y)
+        name_w = max(50, width_x - (x + dir_w + 10) - 10)
+        self.name_input.rect.topleft = (x + dir_w + 10, y)
         self.name_input.rect.width = name_w
+        self.name_input.rect.height = height
         
         self.width_input.rect.topleft = (width_x, y)
         self.width_input.rect.width = width_w
+        self.width_input.rect.height = height
         
         self.del_btn.rect.topleft = (del_x, y)
+        self.del_btn.rect.width = del_w
+        self.del_btn.rect.height = height
 
     def handle_event(self, event, offset_mouse_pos=None):
         if self.dir_toggle.handle_event(event, offset_mouse_pos): return True
@@ -1453,7 +1458,9 @@ class BlockDiagram:
         # Central block
         block_rect = pygame.Rect(block_x, block_y, block_w, block_h)
         bg_surface = pygame.Surface((block_w, block_h), pygame.SRCALPHA)
-        bg_surface.fill((20, 24, 33, 220))
+        # Dynamic block color based on editor.background
+        base_color = theme.colors["editor.background"]
+        bg_surface.fill((base_color[0], base_color[1], base_color[2], 220))
         surface.blit(bg_surface, block_rect)
         
         pygame.draw.rect(surface, theme.colors["sideBar.border"], block_rect, width=2, border_radius=8)
