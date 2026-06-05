@@ -1,1 +1,10 @@
-/__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller / Packaging
+build/
+dist/
+*.spec
+assets/images/*.ico

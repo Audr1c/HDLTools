@@ -22,32 +22,50 @@ import pygame
 import tkinter as tk
 from tkinter import filedialog
 
+def resource_path(relative_path):
+    """Obtient le chemin absolu vers la ressource, fonctionne pour dev et pour PyInstaller"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
 # Asset Paths Setup
-DOSSIER_COURANT = os.path.dirname(os.path.abspath(__file__))
+DOSSIER_COURANT = resource_path(".")
 DOSSIER_IMAGES = os.path.join(DOSSIER_COURANT, "assets", "images")
 
 # Ensure assets directory and default icon exist before loading
-os.makedirs(DOSSIER_IMAGES, exist_ok=True)
+try:
+    os.makedirs(DOSSIER_IMAGES, exist_ok=True)
+except Exception:
+    pass
+
 chemin_icone = os.path.join(DOSSIER_IMAGES, "icone.png")
 if not os.path.exists(chemin_icone):
-    pygame.init()
-    surf = pygame.Surface((32, 32), pygame.SRCALPHA)
-    pygame.draw.rect(surf, (0, 229, 255), (6, 6, 20, 20), border_radius=4)
-    for i in range(4):
-        py = 9 + i * 5
-        pygame.draw.line(surf, (0, 229, 255), (2, py), (5, py), 1)
-        pygame.draw.line(surf, (0, 229, 255), (26, py), (29, py), 1)
-    pygame.image.save(surf, chemin_icone)
+    try:
+        pygame.init()
+        surf = pygame.Surface((32, 32), pygame.SRCALPHA)
+        pygame.draw.rect(surf, (0, 229, 255), (6, 6, 20, 20), border_radius=4)
+        for i in range(4):
+            py = 9 + i * 5
+            pygame.draw.line(surf, (0, 229, 255), (2, py), (5, py), 1)
+            pygame.draw.line(surf, (0, 229, 255), (26, py), (29, py), 1)
+        pygame.image.save(surf, chemin_icone)
+    except Exception:
+        pass
 
 # Ensure diskette.png exists
 chemin_disquette = os.path.join(DOSSIER_IMAGES, "diskette.png")
 if not os.path.exists(chemin_disquette):
-    pygame.init()
-    temp_d = pygame.Surface((32, 32), pygame.SRCALPHA)
-    pygame.draw.rect(temp_d, (201, 209, 217), (4, 4, 24, 24), border_radius=2)
-    pygame.draw.rect(temp_d, (20, 24, 33), (8, 6, 16, 6))
-    pygame.draw.rect(temp_d, (20, 24, 33), (10, 18, 12, 10))
-    pygame.image.save(temp_d, chemin_disquette)
+    try:
+        pygame.init()
+        temp_d = pygame.Surface((32, 32), pygame.SRCALPHA)
+        pygame.draw.rect(temp_d, (201, 209, 217), (4, 4, 24, 24), border_radius=2)
+        pygame.draw.rect(temp_d, (20, 24, 33), (8, 6, 16, 6))
+        pygame.draw.rect(temp_d, (20, 24, 33), (10, 18, 12, 10))
+        pygame.image.save(temp_d, chemin_disquette)
+    except Exception:
+        pass
 
 # Import our custom components
 from ui_components import (

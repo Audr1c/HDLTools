@@ -3,6 +3,14 @@ import json
 import os
 import time
 import tkinter as tk
+import sys
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
 
 # Translations system
 current_language = "en"
@@ -317,7 +325,7 @@ class Theme:
             self.fonts["code_large"] = pygame.font.SysFont(mono_name, 16)
 
 # Globals for access
-theme = Theme("theme.json")
+theme = Theme(resource_path("theme.json"))
 image_cache = {}
 
 def draw_highlighted_line(surface, font, line_text, x, y):
@@ -450,7 +458,7 @@ class Button(Widget):
 
             if self.icon == "save":
                 # Check for diskette.png in assets/images/
-                path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "images", "diskette.png")
+                path = resource_path(os.path.join("assets", "images", "diskette.png"))
                 if path not in image_cache:
                     if os.path.exists(path):
                         try:
