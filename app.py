@@ -2,7 +2,7 @@ import ctypes
 import os
 import sys
 
-# Set DPI awareness for Windows to prevent blurry fonts
+# Set DPI awareness and AppUserModelID for Windows to prevent blurry fonts and generic taskbar icon
 if sys.platform.startswith("win"):
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -11,6 +11,12 @@ if sys.platform.startswith("win"):
             ctypes.windll.user32.SetProcessDPIAware()
         except Exception:
             pass
+    try:
+        # Give the process a unique App ID before creating any window/UI, so Windows displays the custom taskbar icon
+        myappid = "Tools.hdl.1.0"
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception:
+        pass
 
 import pygame
 import tkinter as tk
@@ -84,23 +90,19 @@ def select_save_file(default_name, is_tb=False):
 def main():
     global WINDOW_WIDTH, WINDOW_HEIGHT
     
-    # Initialize Pygame and Setup theme fonts
+    # Initialize Pygame
     pygame.init()
-    pygame.display.set_caption("SystemVerilog Tool - Module & Testbench Designer")
-    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
-    clock = pygame.time.Clock()
     
-    # Apply application icon (preserve Windows taskbar grouping)
-    if sys.platform == "win32":
-        import ctypes
-        myappid = "Tools.hdl.1.0"
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-
+    # Apply application icon BEFORE set_mode to ensure OS registers it properly
     try:
         icone = pygame.image.load(chemin_icone)
         pygame.display.set_icon(icone)
     except pygame.error:
         print(f"Impossible de charger l'image à l'emplacement : {chemin_icone}")
+
+    pygame.display.set_caption("SystemVerilog Tool - Module & Testbench Designer")
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
+    clock = pygame.time.Clock()
 
     theme.init_fonts()
     
