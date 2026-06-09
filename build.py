@@ -54,7 +54,7 @@ def main():
         "--add-data", "assets;assets",
         "--add-data", "theme.json;.",
         "app.py",
-        "--name=Tools HDL"
+        "--name=Tools HDL V0.1.1"
     ]
     
     # Add icon if available
