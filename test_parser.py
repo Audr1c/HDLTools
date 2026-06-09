@@ -1,4 +1,4 @@
-from sv_parser import parse_sv_file, detect_clk_rst
+from src.core.parser import parse_sv_file, detect_clk_rst
 
 # 1. Mock ANSI-style SystemVerilog module
 ansi_code = """
@@ -108,7 +108,7 @@ def test_parser():
     end my_vhdl_module;
     """
     print("\n--- Parsing VHDL Module ---")
-    from sv_parser import parse_vhdl_file, detect_hdl_language
+    from src.core.parser import parse_vhdl_file, detect_hdl_language
     mod_name, ports = parse_vhdl_file(vhdl_code)
     print(f"Parsed VHDL Name: {mod_name}")
     print("Parsed Ports:")

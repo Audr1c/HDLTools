@@ -1,6 +1,6 @@
 import os
-from sv_parser import parse_sv_file
-from sv_generator import generate_testbench_code, generate_master_tb_code
+from src.core.parser import parse_sv_file
+from src.core.generator import generate_testbench_code, generate_master_tb_code
 
 def test_integration():
     print("=== Testing Advanced Testbench Generation ===")
