@@ -74,8 +74,45 @@ from ui_components import (
     TextArea, set_clipboard_text, tr
 )
 import ui_components
-from sv_parser import parse_sv_file, detect_clk_rst
+import json
+from sv_parser import parse_sv_file, detect_clk_rst, parse_vhdl_file, detect_hdl_language
 from sv_generator import generate_module_code, generate_testbench_code, generate_master_tb_code
+
+def get_preferences_path():
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(base_dir, "preferences.json")
+    try:
+        test_file = path + ".tmp"
+        with open(test_file, "w") as f:
+            f.write("")
+        os.remove(test_file)
+        return path
+    except Exception:
+        appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
+        dir_path = os.path.join(appdata, "ToolsHDL")
+        os.makedirs(dir_path, exist_ok=True)
+        return os.path.join(dir_path, "preferences.json")
+
+def load_preferences():
+    path = get_preferences_path()
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print("Failed to load preferences:", e)
+    return {}
+
+def save_preferences(prefs):
+    path = get_preferences_path()
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(prefs, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print("Failed to save preferences:", e)
 
 # Global settings for window
 WINDOW_WIDTH = 1280
@@ -86,8 +123,14 @@ def select_open_file():
     root = tk.Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(
-        title="Open SystemVerilog/Verilog Module",
-        filetypes=[("SystemVerilog Files", "*.sv"), ("Verilog Files", "*.v"), ("All Files", "*.*")]
+        title="Open HDL Module",
+        filetypes=[
+            ("HDL Files", "*.sv;*.v;*.vhd;*.vhdl"),
+            ("SystemVerilog Files", "*.sv"),
+            ("Verilog Files", "*.v"),
+            ("VHDL Files", "*.vhd;*.vhdl"),
+            ("All Files", "*.*")
+        ]
     )
     root.destroy()
     return file_path
@@ -95,13 +138,19 @@ def select_open_file():
 def select_save_file(default_name, is_tb=False):
     root = tk.Tk()
     root.withdraw()
-    ext = ".sv"
+    ext = os.path.splitext(default_name)[1] or ".sv"
     title = "Save Testbench File" if is_tb else "Save Module File"
     file_path = filedialog.asksaveasfilename(
         title=title,
         initialfile=default_name,
         defaultextension=ext,
-        filetypes=[("SystemVerilog Files", "*.sv"), ("Verilog Files", "*.v"), ("All Files", "*.*")]
+        filetypes=[
+            ("HDL Files", "*.sv;*.v;*.vhd;*.vhdl"),
+            ("SystemVerilog Files", "*.sv"),
+            ("Verilog Files", "*.v"),
+            ("VHDL Files", "*.vhd;*.vhdl"),
+            ("All Files", "*.*")
+        ]
     )
     root.destroy()
     return file_path
@@ -109,6 +158,18 @@ def select_save_file(default_name, is_tb=False):
 def main():
     global WINDOW_WIDTH, WINDOW_HEIGHT
     
+    # Load preferences
+    prefs = load_preferences()
+    WINDOW_WIDTH = prefs.get("window_width", 1280)
+    WINDOW_HEIGHT = prefs.get("window_height", 720)
+    window_maximized = prefs.get("window_maximized", False)
+    ui_font_scale = prefs.get("ui_scale", 1.0)
+    code_font_size = prefs.get("editor_font_size", 14)
+    current_theme_name = prefs.get("theme", "Dark (Default)")
+    ui_components.current_language = prefs.get("language", "en")
+    hdl_lang = prefs.get("hdl_lang", "SystemVerilog")
+    sidebar_width = prefs.get("sidebar_width", 500)
+
     # Initialize Pygame
     pygame.init()
     
@@ -119,11 +180,18 @@ def main():
     except pygame.error:
         print(f"Impossible de charger l'image à l'emplacement : {chemin_icone}")
 
-    pygame.display.set_caption("SystemVerilog Tool - Module & Testbench Designer")
-    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
+    pygame.display.set_caption("Tools HDL - V0.1.1")
+    flags = pygame.RESIZABLE
+    if window_maximized:
+        flags |= pygame.WINDOWMAXIMIZED
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), flags)
     clock = pygame.time.Clock()
 
-    theme.init_fonts()
+    # Apply scaling and fonts from preferences
+    theme.init_fonts(ui_scale=ui_font_scale)
+    theme.fonts["code"] = pygame.font.SysFont(theme.mono_name, code_font_size)
+    theme.fonts["code_large"] = pygame.font.SysFont(theme.mono_name, code_font_size + 2)
+    theme.apply_preset(current_theme_name)
     
     # State variables
     module_name = "my_module"
@@ -149,9 +217,6 @@ def main():
     
     # Preferences Modal State
     show_preferences_modal = False
-    ui_font_scale = 1.0
-    current_theme_name = "Dark (Default)"
-    
     # Toast Manager
     toast = ToastManager()
     
@@ -174,15 +239,28 @@ def main():
     
     # PortRows
     port_rows = []
-
+ 
     pref_card_w = 450
-    pref_card_h = 350
+    pref_card_h = 400
     
     # Language toggle
-    pref_lang_toggle = ToggleButton((0, 0, 180, 26), ["English", "Français"], initial_index=0)
+    pref_lang_toggle = ToggleButton((0, 0, 180, 26), ["English", "Français"], initial_index=0 if ui_components.current_language == "en" else 1)
     
     # Theme toggle
-    pref_theme_toggle = ToggleButton((0, 0, 180, 26), ["Dark (Default)", "Light", "Solarized"], initial_index=0)
+    theme_idx = 0
+    if current_theme_name == "Light":
+        theme_idx = 1
+    elif current_theme_name == "Solarized":
+        theme_idx = 2
+    pref_theme_toggle = ToggleButton((0, 0, 180, 26), ["Dark (Default)", "Light", "Solarized"], initial_index=theme_idx)
+    
+    # HDL Language toggle
+    hdl_idx = 0
+    if hdl_lang == "Verilog":
+        hdl_idx = 1
+    elif hdl_lang == "VHDL":
+        hdl_idx = 2
+    pref_hdl_toggle = ToggleButton((0, 0, 180, 26), ["SystemVerilog", "Verilog", "VHDL"], initial_index=hdl_idx)
     
     # UI scale change functions
     def ui_dec():
@@ -326,10 +404,10 @@ def main():
 
     def update_code_cache():
         if code_subtab == "module":
-            code_str = generate_module_code(module_name, ports)
+            code_str = generate_module_code(module_name, ports, hdl_lang=hdl_lang)
         elif code_subtab == "testbench":
             code_str = generate_testbench_code(
-                module_name, ports, is_sync_reset, is_active_low_reset, tb_mode
+                module_name, ports, is_sync_reset, is_active_low_reset, tb_mode, hdl_lang=hdl_lang
             )
         else: # "master"
             code_str = get_master_tb_code()
@@ -346,6 +424,8 @@ def main():
     def set_right_tab(tab):
         nonlocal right_tab
         right_tab = tab
+        code_preview_area.scroll_y = 0
+        paste_area.scroll_y = 0
         update_code_cache()
         
     # Code subtabs
@@ -356,29 +436,37 @@ def main():
     def set_subtab(sub):
         nonlocal code_subtab
         code_subtab = sub
+        code_preview_area.scroll_y = 0
         update_code_cache()
         
     # Save active code action
     def handle_save_active():
+        ext_map = {
+            "SystemVerilog": ".sv",
+            "Verilog": ".v",
+            "VHDL": ".vhd"
+        }
+        ext = ext_map.get(hdl_lang, ".sv")
+        
         if right_tab == "diagram":
-            default_fn = f"{module_name}.sv"
+            default_fn = f"{module_name}{ext}"
             is_tb_save = False
             code_type = "module"
         elif right_tab == "paste":
-            default_fn = "pasted_module.sv"
+            default_fn = f"pasted_module{ext}"
             is_tb_save = False
             code_type = "paste"
         else:
             if code_subtab == "module":
-                default_fn = f"{module_name}.sv"
+                default_fn = f"{module_name}{ext}"
                 is_tb_save = False
                 code_type = "module"
             elif code_subtab == "testbench":
-                default_fn = f"tb_{module_name}.sv"
+                default_fn = f"tb_{module_name}{ext}"
                 is_tb_save = True
                 code_type = "testbench"
             else:
-                default_fn = "master_tb.sv"
+                default_fn = f"master_tb{ext}"
                 is_tb_save = True
                 code_type = "master"
                 
@@ -386,10 +474,10 @@ def main():
         if path:
             try:
                 if code_type == "module":
-                    code_str = generate_module_code(module_name, ports)
+                    code_str = generate_module_code(module_name, ports, hdl_lang=hdl_lang)
                 elif code_type == "testbench":
                     code_str = generate_testbench_code(
-                        module_name, ports, is_sync_reset, is_active_low_reset, tb_mode
+                        module_name, ports, is_sync_reset, is_active_low_reset, tb_mode, hdl_lang=hdl_lang
                     )
                 elif code_type == "paste":
                     code_str = paste_area.text
@@ -423,7 +511,16 @@ def main():
 
     def perform_parse(content):
         try:
-            parsed_name, parsed_ports = parse_sv_file(content)
+            detected_lang = detect_hdl_language(content)
+            if detected_lang != "Unknown" and detected_lang != hdl_lang:
+                msg = f"Incohérence : Le code collé est {detected_lang}, attendu {hdl_lang}" if ui_components.current_language == "fr" else f"Language mismatch: Paste is {detected_lang}, expected {hdl_lang}"
+                toast.show(msg, is_error=True)
+                
+            if detected_lang == "VHDL" or hdl_lang == "VHDL":
+                parsed_name, parsed_ports = parse_vhdl_file(content)
+            else:
+                parsed_name, parsed_ports = parse_sv_file(content)
+                
             if parsed_name:
                 nonlocal module_name, ports, is_active_low_reset
                 module_name = parsed_name
@@ -437,6 +534,7 @@ def main():
                     active_low_cb.checked = is_active_low_reset
                     
                 rebuild_port_rows()
+                ports_scroll.scroll_y = 0
                 update_code_cache()
                 toast.show(f"Parsed module '{parsed_name}' ({len(ports)} ports)")
                 set_right_tab("diagram")
@@ -447,10 +545,10 @@ def main():
 
     def handle_copy_code():
         if code_subtab == "module":
-            code_str = generate_module_code(module_name, ports)
+            code_str = generate_module_code(module_name, ports, hdl_lang=hdl_lang)
         elif code_subtab == "testbench":
             code_str = generate_testbench_code(
-                module_name, ports, is_sync_reset, is_active_low_reset, tb_mode
+                module_name, ports, is_sync_reset, is_active_low_reset, tb_mode, hdl_lang=hdl_lang
             )
         else:
             code_str = get_master_tb_code()
@@ -689,7 +787,7 @@ def main():
         nonlocal pref_card_w, pref_card_h
         scale = ui_font_scale
         pref_card_w = int(450 * scale)
-        pref_card_h = int(350 * scale)
+        pref_card_h = int(400 * scale)
         card_x = (WINDOW_WIDTH - pref_card_w) // 2
         card_y = (WINDOW_HEIGHT - pref_card_h) // 2
         h_widget = int(26 * scale)
@@ -718,9 +816,13 @@ def main():
         pref_theme_toggle.rect.width = int(180 * scale)
         pref_theme_toggle.rect.height = h_widget
         
+        pref_hdl_toggle.rect.topleft = (card_x + int(220 * scale), card_y + int(275 * scale))
+        pref_hdl_toggle.rect.width = int(180 * scale)
+        pref_hdl_toggle.rect.height = h_widget
+
         btn_pref_close.rect.width = int(150 * scale)
         btn_pref_close.rect.height = int(30 * scale)
-        btn_pref_close.rect.topleft = (card_x + (pref_card_w - btn_pref_close.rect.width) // 2, card_y + int(290 * scale))
+        btn_pref_close.rect.topleft = (card_x + (pref_card_w - btn_pref_close.rect.width) // 2, card_y + int(340 * scale))
 
     def recalculate_all_layouts():
         update_sidebar_rects()
@@ -779,6 +881,13 @@ def main():
             current_theme_name = sel_theme
             theme.apply_preset(sel_theme)
 
+        hdl_names = ["SystemVerilog", "Verilog", "VHDL"]
+        sel_hdl = hdl_names[pref_hdl_toggle.index]
+        if hdl_lang != sel_hdl:
+            hdl_lang = sel_hdl
+            code_preview_area.scroll_y = 0
+            update_code_cache()
+
         # Update responsive UI layouts
         recalculate_all_layouts()
 
@@ -786,13 +895,28 @@ def main():
         events = pygame.event.get()
         for event in events:
             if event.type == pygame.QUIT:
+                is_max = bool(pygame.display.get_surface().get_flags() & pygame.WINDOWMAXIMIZED)
+                save_prefs = {
+                    "window_width": WINDOW_WIDTH,
+                    "window_height": WINDOW_HEIGHT,
+                    "window_maximized": is_max,
+                    "ui_scale": ui_font_scale,
+                    "editor_font_size": code_font_size,
+                    "theme": current_theme_name,
+                    "language": ui_components.current_language,
+                    "hdl_lang": hdl_lang,
+                    "sidebar_width": sidebar_width
+                }
+                save_preferences(save_prefs)
                 pygame.quit()
                 sys.exit()
                 
             if event.type == pygame.VIDEORESIZE:
-                WINDOW_WIDTH = event.w
-                WINDOW_HEIGHT = event.h
-                screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
+                is_max = bool(pygame.display.get_surface().get_flags() & pygame.WINDOWMAXIMIZED)
+                if not is_max:
+                    WINDOW_WIDTH = event.w
+                    WINDOW_HEIGHT = event.h
+                screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
 
             # Divider dragging event handling
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -816,6 +940,7 @@ def main():
             if show_preferences_modal:
                 pref_lang_toggle.handle_event(event)
                 pref_theme_toggle.handle_event(event)
+                pref_hdl_toggle.handle_event(event)
                 btn_pref_ui_dec.handle_event(event)
                 btn_pref_ui_inc.handle_event(event)
                 btn_pref_ed_dec.handle_event(event)
@@ -914,6 +1039,7 @@ def main():
         if show_preferences_modal:
             pref_lang_toggle.update()
             pref_theme_toggle.update()
+            pref_hdl_toggle.update()
             btn_pref_ui_dec.update()
             btn_pref_ui_inc.update()
             btn_pref_ed_dec.update()
@@ -959,7 +1085,7 @@ def main():
             for r in port_rows:
                 r.update()
             
-        ports_scroll.virtual_height = len(ports) * 36
+        ports_scroll.virtual_height = len(ports) * int(36 * ui_font_scale)
         
         # Always update code cache if right tab is "code" to avoid desync
         if right_tab == "code" and not show_preferences_modal:
@@ -1114,6 +1240,11 @@ def main():
             screen.blit(lbl_th, (card_x + int(30 * ui_font_scale), card_y + int(230 * ui_font_scale)))
             pref_theme_toggle.draw(screen)
             
+            # Row 5: HDL Language
+            lbl_hdl = theme.fonts["body_bold"].render(tr("pref_hdl"), True, theme.colors["editor.foreground"])
+            screen.blit(lbl_hdl, (card_x + int(30 * ui_font_scale), card_y + int(280 * ui_font_scale)))
+            pref_hdl_toggle.draw(screen)
+
             # Bottom Close Button
             btn_pref_close.draw(screen)
 

@@ -258,3 +258,157 @@ def detect_clk_rst(ports):
                 break
                 
     return clk_port, rst_port
+
+def strip_vhdl_comments(code):
+    # Remove VHDL comments -- ...
+    return re.sub(r'--.*?\n', '\n', code)
+
+def detect_hdl_language(code_str):
+    """
+    Identifies the HDL language of a code string.
+    Returns: "SystemVerilog", "Verilog", "VHDL", or "Unknown"
+    """
+    clean_verilog = re.sub(r'//.*?\n', '\n', code_str)
+    clean_verilog = re.sub(r'/\*.*?\*/', ' ', clean_verilog, flags=re.DOTALL)
+    
+    clean_vhdl = strip_vhdl_comments(code_str)
+    
+    # VHDL keyword check (case-insensitive)
+    vhdl_keywords = [
+        r'\bentity\b', r'\barchitecture\b', r'\bstd_logic\b', 
+        r'\bstd_logic_vector\b', r'\bdownto\b', r'\bport\b\s*\(', 
+        r'\blibrary\b', r'\buse\b\s+ieee\b'
+    ]
+    vhdl_score = sum(1 for kw in vhdl_keywords if re.search(kw, clean_vhdl, re.IGNORECASE))
+    
+    # SystemVerilog specific (case-sensitive)
+    sv_keywords = [
+        r'\blogic\b', r'\balways_comb\b', r'\balways_ff\b', 
+        r'\bassert\s+property\b', r'\btypedef\s+struct\b', r'\binterface\b'
+    ]
+    sv_score = sum(1 for kw in sv_keywords if re.search(kw, clean_verilog))
+    
+    # Verilog/SV general (case-sensitive)
+    v_keywords = [
+        r'\bmodule\b', r'\bendmodule\b', r'\binput\b', 
+        r'\boutput\b', r'\breg\b', r'\bwire\b', r'\balways\b', r'\bassign\b'
+    ]
+    v_score = sum(1 for kw in v_keywords if re.search(kw, clean_verilog))
+    
+    if vhdl_score > 0 and vhdl_score > v_score:
+        return "VHDL"
+    elif sv_score > 0:
+        return "SystemVerilog"
+    elif v_score > 0:
+        if re.search(r'\blogic\b', clean_verilog):
+            return "SystemVerilog"
+        else:
+            return "Verilog"
+    
+    return "Unknown"
+
+def parse_vhdl_file(file_content):
+    """
+    Parses VHDL entity declarations.
+    Returns: (entity_name, list_of_ports)
+    Each port is a dict: {"name": str, "dir": "IN"|"OUT"|"INOUT", "width": str}
+    """
+    code = strip_vhdl_comments(file_content)
+    
+    # Find entity name: entity <name> is
+    entity_match = re.search(r'\bentity\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+is\b', code, re.IGNORECASE)
+    if not entity_match:
+        return None, []
+        
+    entity_name = entity_match.group(1)
+    
+    # Find port block
+    start_pos = code.lower().find("port", entity_match.end())
+    if start_pos == -1:
+        return entity_name, []
+        
+    open_paren = code.find("(", start_pos)
+    if open_paren == -1:
+        return entity_name, []
+        
+    # Match parentheses
+    depth = 1
+    close_paren = -1
+    for idx in range(open_paren + 1, len(code)):
+        if code[idx] == '(':
+            depth += 1
+        elif code[idx] == ')':
+            depth -= 1
+            if depth == 0:
+                close_paren = idx
+                break
+                
+    if close_paren == -1:
+        return entity_name, []
+        
+    port_block = code[open_paren + 1 : close_paren]
+    
+    ports = []
+    # Split by semicolon
+    statements = port_block.split(';')
+    for stmt in statements:
+        stmt = stmt.strip()
+        if not stmt:
+            continue
+            
+        if ':' not in stmt:
+            continue
+            
+        parts = stmt.split(':', 1)
+        names_part = parts[0].strip()
+        type_part = parts[1].strip()
+        
+        names = [n.strip() for n in names_part.split(',') if n.strip()]
+        
+        # Determine direction
+        dir_match = re.match(r'^(inout|in|out|buffer|linkage)\b', type_part, re.IGNORECASE)
+        if not dir_match:
+            continue
+            
+        dir_str = dir_match.group(1).lower()
+        direction = "IN"
+        if dir_str == "in":
+            direction = "IN"
+        elif dir_str == "out" or dir_str == "buffer":
+            direction = "OUT"
+        elif dir_str == "inout":
+            direction = "INOUT"
+            
+        rest_type = type_part[dir_match.end():].strip()
+        if ':=' in rest_type:
+            rest_type = rest_type.split(':=')[0].strip()
+            
+        # Parse width.
+        width = "1"
+        vector_match = re.search(r'std_logic_vector\s*\(([^)]+)\)', rest_type, re.IGNORECASE)
+        if vector_match:
+            bounds = vector_match.group(1).strip()
+            downto_match = re.search(r'([0-9a-zA-Z_+\-*/\s]+)\s+downto\s+([0-9a-zA-Z_+\-*/\s]+)', bounds, re.IGNORECASE)
+            to_match = re.search(r'([0-9a-zA-Z_+\-*/\s]+)\s+to\s+([0-9a-zA-Z_+\-*/\s]+)', bounds, re.IGNORECASE)
+            if downto_match:
+                msb = downto_match.group(1).strip()
+                lsb = downto_match.group(2).strip()
+                width = f"[{msb}:{lsb}]"
+            elif to_match:
+                lsb = to_match.group(1).strip()
+                msb = to_match.group(2).strip()
+                width = f"[{lsb}:{msb}]"
+            else:
+                width = bounds
+        else:
+            width = "1"
+            
+        for name in names:
+            if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+                ports.append({
+                    "name": name,
+                    "dir": direction,
+                    "width": width
+                })
+                
+    return entity_name, ports

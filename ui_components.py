@@ -17,7 +17,7 @@ current_language = "en"
 
 TRANSLATIONS = {
     "en": {
-        "title": "SystemVerilog Designer",
+        "title": "Tools HDL V0.1.1",
         "module_name": "Module Name:",
         "active_low": "Active Low Reset",
         "sync_reset": "Synchronous Reset",
@@ -42,6 +42,7 @@ TRANSLATIONS = {
         "pref_lang": "Language:",
         "pref_editor_size": "Editor Font Size:",
         "pref_theme": "Theme:",
+        "pref_hdl": "HDL Language:",
         "Close": "Close",
         "Active Low Reset": "Active Low Reset",
         "Synchronous Reset": "Synchronous Reset",
@@ -52,7 +53,7 @@ TRANSLATIONS = {
         "close": "Close",
     },
     "fr": {
-        "title": "Concepteur SystemVerilog",
+        "title": "Tools HDL V0.1.1",
         "module_name": "Nom du Module :",
         "active_low": "Reset Actif Bas",
         "sync_reset": "Reset Synchrone",
@@ -77,6 +78,7 @@ TRANSLATIONS = {
         "pref_lang": "Langue :",
         "pref_editor_size": "Taille Code :",
         "pref_theme": "Thème :",
+        "pref_hdl": "Langage HDL :",
         "Close": "Fermer",
         "Active Low Reset": "Reset Actif Bas",
         "Synchronous Reset": "Reset Synchrone",
@@ -743,7 +745,7 @@ class InputBox(Widget):
 
     def char_allowed(self, c):
         if self.is_number_range:
-            return c.isalnum() or c in "[:]-+_"
+            return c.isalnum() or c in "[:]-+_ "
         else:
             return c.isalnum() or c in "_"
 
@@ -828,6 +830,28 @@ class TextArea(Widget):
         self.cursor_visible = True
         self.last_click_time = 0
 
+        self.is_dragging_scrollbar = False
+        self.drag_start_y = 0
+        self.drag_start_scroll = 0
+        self.scrollbar_width = 8
+        self.scrollbar_padding = 4
+
+    def get_scrollbar_handle_rect(self):
+        track_h = self.rect.height - 16
+        if self.virtual_height <= track_h or self.virtual_height == 0:
+            return pygame.Rect(0, 0, 0, 0)
+        handle_h = max(20, int(track_h * (track_h / self.virtual_height)))
+        max_scroll = self.virtual_height - track_h
+        if max_scroll <= 0:
+            return pygame.Rect(0, 0, 0, 0)
+        scroll_ratio = self.scroll_y / max_scroll
+        scrollable_track_h = track_h - handle_h
+        handle_y = self.rect.y + 8 + int(scroll_ratio * scrollable_track_h)
+        return pygame.Rect(self.rect.right - self.scrollbar_width - self.scrollbar_padding,
+                           handle_y,
+                           self.scrollbar_width,
+                           handle_h)
+
     def get_selection_range(self):
         if self.select_start != -1 and self.select_end != -1 and self.select_start != self.select_end:
             return min(self.select_start, self.select_end), max(self.select_start, self.select_end)
@@ -880,6 +904,32 @@ class TextArea(Widget):
                 old_focus = self.focused
                 self.focused = self.hovered
                 if self.focused:
+                    # Check if click on scrollbar
+                    if self.virtual_height > self.rect.height - 16:
+                        track_rect = pygame.Rect(self.rect.right - self.scrollbar_width - self.scrollbar_padding,
+                                                 self.rect.y + 8,
+                                                 self.scrollbar_width,
+                                                 self.rect.height - 16)
+                        if track_rect.collidepoint(pos):
+                            sb_rect = self.get_scrollbar_handle_rect()
+                            if sb_rect.collidepoint(pos):
+                                self.is_dragging_scrollbar = True
+                                self.drag_start_y = pos[1]
+                                self.drag_start_scroll = self.scroll_y
+                            else:
+                                track_h = self.rect.height - 16
+                                handle_h = sb_rect.height
+                                scrollable_track_h = track_h - handle_h
+                                if scrollable_track_h > 0:
+                                    click_y_rel = pos[1] - (self.rect.y + 8) - (handle_h / 2)
+                                    click_ratio = click_y_rel / scrollable_track_h
+                                    max_scroll = max(0, self.virtual_height - track_h)
+                                    self.scroll_y = max(0, min(max_scroll, int(click_ratio * max_scroll)))
+                                    self.is_dragging_scrollbar = True
+                                    self.drag_start_y = pos[1]
+                                    self.drag_start_scroll = self.scroll_y
+                            return True
+                            
                     pygame.key.start_text_input()
                     curr_time = time.time()
                     if curr_time - self.last_click_time < 0.28:
@@ -903,13 +953,24 @@ class TextArea(Widget):
                 return self.focused
 
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.is_dragging_scrollbar = False
             self.is_dragging_selection = False
             if self.select_start == self.select_end:
                 self.select_start = -1
                 self.select_end = -1
 
         elif event.type == pygame.MOUSEMOTION:
-            if self.focused and self.is_dragging_selection:
+            if self.is_dragging_scrollbar:
+                delta_y = pos[1] - self.drag_start_y
+                track_h = self.rect.height - 16
+                max_scroll = max(0, self.virtual_height - track_h)
+                handle_h = max(20, int(track_h * (track_h / self.virtual_height)))
+                scrollable_track_h = track_h - handle_h
+                if scrollable_track_h > 0:
+                    scroll_delta = (delta_y / scrollable_track_h) * max_scroll
+                    self.scroll_y = max(0, min(max_scroll, self.drag_start_scroll + scroll_delta))
+                return True
+            elif self.focused and self.is_dragging_selection:
                 lines = self.text.split("\n")
                 line_idx = (pos[1] - self.rect.y - 8 + self.scroll_y) // self.line_h
                 line_idx = max(0, min(len(lines) - 1, line_idx))
@@ -1127,7 +1188,12 @@ class TextArea(Widget):
         pygame.draw.rect(surface, border_color, self.rect, width=2, border_radius=12)
         
         prev_clip = surface.get_clip()
-        surface.set_clip(self.rect.inflate(-4, -4))
+        
+        # Adjust clip if scrollbar is visible
+        clip_w = self.rect.width - 8
+        if self.virtual_height > self.rect.height - 16:
+            clip_w -= 16
+        surface.set_clip(pygame.Rect(self.rect.x + 4, self.rect.y + 4, clip_w, self.rect.height - 8))
         
         font = theme.fonts["code"]
         lines = self.text.split("\n")
@@ -1176,6 +1242,18 @@ class TextArea(Widget):
                 pygame.draw.line(surface, theme.colors["input.foreground"], (cx, ly + 2), (cx, ly + self.line_h - 2), 1)
                 
         surface.set_clip(prev_clip)
+
+        # Draw scrollbar if content exceeds height
+        if self.virtual_height > self.rect.height - 16:
+            track_rect = pygame.Rect(self.rect.right - self.scrollbar_width - self.scrollbar_padding,
+                                     self.rect.y + 8,
+                                     self.scrollbar_width,
+                                     self.rect.height - 16)
+            pygame.draw.rect(surface, theme.colors["sideBar.background"], track_rect, border_radius=4)
+            
+            handle_rect = self.get_scrollbar_handle_rect()
+            handle_color = theme.colors["button.hoverBackground"] if self.is_dragging_scrollbar else theme.colors["sideBar.border"]
+            pygame.draw.rect(surface, handle_color, handle_rect, border_radius=4)
 
 class Checkbox(Widget):
     def __init__(self, rect, label, initial_val=False, callback=None):
@@ -1239,11 +1317,28 @@ class ScrollArea:
                 return True
             elif event.button == 1:
                 if self.virtual_height > self.rect.height:
-                    sb_rect = self.get_scrollbar_handle_rect()
-                    if sb_rect.collidepoint(mouse_pos):
-                        self.is_dragging = True
-                        self.drag_start_y = mouse_pos[1]
-                        self.drag_start_scroll = self.scroll_y
+                    track_rect = pygame.Rect(self.rect.right - self.scrollbar_width - self.scrollbar_padding,
+                                             self.rect.y,
+                                             self.scrollbar_width,
+                                             self.rect.height)
+                    if track_rect.collidepoint(mouse_pos):
+                        sb_rect = self.get_scrollbar_handle_rect()
+                        if sb_rect.collidepoint(mouse_pos):
+                            self.is_dragging = True
+                            self.drag_start_y = mouse_pos[1]
+                            self.drag_start_scroll = self.scroll_y
+                        else:
+                            track_h = self.rect.height
+                            handle_h = sb_rect.height
+                            scrollable_track_h = track_h - handle_h
+                            if scrollable_track_h > 0:
+                                click_y_rel = mouse_pos[1] - self.rect.y - (handle_h / 2)
+                                click_ratio = click_y_rel / scrollable_track_h
+                                max_scroll = max(0, self.virtual_height - track_h)
+                                self.scroll_y = max(0, min(max_scroll, int(click_ratio * max_scroll)))
+                                self.is_dragging = True
+                                self.drag_start_y = mouse_pos[1]
+                                self.drag_start_scroll = self.scroll_y
                         return True
 
         elif event.type == pygame.MOUSEBUTTONUP:

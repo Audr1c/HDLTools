@@ -54,7 +54,7 @@ def main():
         "--add-data", "assets;assets",
         "--add-data", "theme.json;.",
         "app.py",
-        "--name=Tools HDL v0.1.0"
+        "--name=Tools HDL"
     ]
     
     # Add icon if available
@@ -67,7 +67,7 @@ def main():
         print("\n" + "="*50)
         print("Success! The standalone application has been compiled.")
         print("You can find the executable here:")
-        print(os.path.join(project_dir, "dist", "Tools HDL v0.1.0.exe"))
+        print(os.path.join(project_dir, "dist", "Tools HDL.exe"))
         print("="*50)
     except subprocess.CalledProcessError as e:
         print(f"Error during packaging: {e}")
